@@ -31,4 +31,9 @@ finally:
     if pair is not None:
         print("Removing master pair", flush=True)
         driver.remove_pair(pair)
+        remaining = subprocess.run(
+            ["xinput", "list", "--short"], check=True, text=True, capture_output=True
+        ).stdout
+        if "MultiDesk-ci-smoke" in remaining:
+            raise AssertionError("The MPX master pair remained after disconnect cleanup.")
     driver.close()
