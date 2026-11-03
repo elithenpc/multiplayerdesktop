@@ -234,7 +234,8 @@ def on_disconnect():
     with state_lock:
         clients.pop(sid, None)
         pair = approved.pop(sid, None)
-        last_input.pop(sid, None)
+        for key in [key for key in last_input if key[0] == sid]:
+            last_input.pop(key, None)
     if pair:
         try:
             xinput.remove_pair(pair)
