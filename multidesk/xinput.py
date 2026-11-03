@@ -9,18 +9,6 @@ import threading
 from dataclasses import dataclass
 
 
-class XInputClassInfo(ctypes.Structure):
-    _fields_ = [("input_class", ctypes.c_ubyte), ("event_type_base", ctypes.c_ubyte)]
-
-
-class XDeviceStruct(ctypes.Structure):
-    _fields_ = [
-        ("device_id", ctypes.c_ulong),
-        ("num_classes", ctypes.c_int),
-        ("classes", ctypes.POINTER(XInputClassInfo)),
-    ]
-
-
 @dataclass
 class DevicePair:
     name: str
@@ -57,16 +45,12 @@ class XInputMPX:
         self.x11.XCloseDisplay.restype = ctypes.c_int
         self.x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
         self.x11.XSync.restype = ctypes.c_int
-        self.x11.XFree.argtypes = [ctypes.c_void_p]
-        self.x11.XFree.restype = ctypes.c_int
         self.x11.XStringToKeysym.argtypes = [ctypes.c_char_p]
         self.x11.XStringToKeysym.restype = ctypes.c_ulong
         self.x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
         self.x11.XKeysymToKeycode.restype = ctypes.c_uint
         self.xi.XOpenDevice.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
         self.xi.XOpenDevice.restype = ctypes.c_void_p
-        self.xi.XCloseDevice.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-        self.xi.XCloseDevice.restype = ctypes.c_int
         self.xi.XISetFocus.argtypes = [
             ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong
         ]
@@ -93,14 +77,6 @@ class XInputMPX:
             ["xinput", *args], check=True, text=True, capture_output=True, timeout=5
         )
         return result.stdout
-
-    def _free_device_handle(self, handle: int | None) -> None:
-        if not handle:
-            return
-        device = ctypes.cast(handle, ctypes.POINTER(XDeviceStruct)).contents
-        if device.classes:
-            self.x11.XFree(device.classes)
-        self.x11.XFree(handle)
 
     def create_pair(self, guest_id: str) -> DevicePair:
         pointer = None
@@ -148,8 +124,6 @@ class XInputMPX:
                     self._run_xinput("remove-master", name + " pointer", "AttachToMaster", "2", "3")
                 except Exception:
                     pass
-                self._free_device_handle(pointer)
-                self._free_device_handle(keyboard)
                 raise
 
     def remove_pair(self, pair: DevicePair) -> None:
@@ -165,8 +139,6 @@ class XInputMPX:
             except subprocess.CalledProcessError:
                 pass
             self.x11.XSync(self.display, 0)
-            self._free_device_handle(pair.pointer)
-            self._free_device_handle(pair.keyboard)
 
     def move(self, pair: DevicePair, x: int, y: int) -> None:
         with self.lock:
