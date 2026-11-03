@@ -345,8 +345,19 @@ def key(data):
 
 
 if __name__ == "__main__":
+    # Fail early if this X server cannot create independent master devices.
+    try:
+        probe_pair = xinput.create_pair("startup-check")
+        xinput.remove_pair(probe_pair)
+    except Exception as exc:
+        raise SystemExit(
+            "MultiDesk MPX self-test failed. Confirm this is an X11/Xorg session "
+            "and that xinput can create master devices. Details: " + str(exc)
+        ) from exc
+
     print()
     print("MultiDesk host is starting.")
+    print("XInput2 MPX self-test passed.")
     print(f"Guest URL: http://{host_ip()}:{PORT}")
     tail_ip = tailscale_ip()
     if tail_ip:
