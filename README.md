@@ -58,7 +58,14 @@ Install and sign in to Tailscale on the host and guest computers. Open the Tails
 
 ### Friends outside your tailnet
 
-Tailscale Funnel can publish the host service to the public internet with HTTPS. Enable Funnel for port 8765 on the host and share the generated HTTPS URL with guests. The host approval screen still controls who gets desktop input access.
+Tailscale Funnel can publish the host service to the public internet with HTTPS. After enabling Funnel in your tailnet policy, run this on the host while MultiDesk is running:
+
+    sudo tailscale funnel --bg 8765
+    tailscale funnel status
+
+Copy the HTTPS URL shown by the status command and share it with guests. The host approval screen still controls who gets desktop input access. Funnel requires MagicDNS and HTTPS certificates to be enabled for your tailnet. To remove the Funnel configuration later, run:
+
+    sudo tailscale funnel reset
 
 Do not forward port 8765 directly from your router to the internet. Do not publish the host dashboard token. If using another public reverse proxy, it must support WebSocket upgrades and HTTPS.
 
