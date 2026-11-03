@@ -9,6 +9,18 @@ import threading
 from dataclasses import dataclass
 
 
+class XInputClassInfo(ctypes.Structure):
+    _fields_ = [("input_class", ctypes.c_ubyte), ("event_type_base", ctypes.c_ubyte)]
+
+
+class XDeviceStruct(ctypes.Structure):
+    _fields_ = [
+        ("device_id", ctypes.c_ulong),
+        ("num_classes", ctypes.c_int),
+        ("classes", ctypes.POINTER(XInputClassInfo)),
+    ]
+
+
 @dataclass
 class DevicePair:
     name: str
@@ -45,6 +57,8 @@ class XInputMPX:
         self.x11.XCloseDisplay.restype = ctypes.c_int
         self.x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
         self.x11.XSync.restype = ctypes.c_int
+        self.x11.XFree.argtypes = [ctypes.c_void_p]
+        self.x11.XFree.restype = ctypes.c_int
         self.x11.XStringToKeysym.argtypes = [ctypes.c_char_p]
         self.x11.XStringToKeysym.restype = ctypes.c_ulong
         self.x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
@@ -80,7 +94,17 @@ class XInputMPX:
         )
         return result.stdout
 
+    def _free_device_handle(self, handle: int | None) -> None:
+        if not handle:
+            return
+        device = ctypes.cast(handle, ctypes.POINTER(XDeviceStruct)).contents
+        if device.classes:
+            self.x11.XFree(device.classes)
+        self.x11.XFree(handle)
+
     def create_pair(self, guest_id: str) -> DevicePair:
+        pointer = None
+        keyboard = None
         safe = re.sub(r"[^A-Za-z0-9_-]", "", guest_id)[:12] or "guest"
         name = "MultiDesk-" + safe
         with self.lock:
@@ -124,15 +148,16 @@ class XInputMPX:
                     self._run_xinput("remove-master", name + " pointer", "AttachToMaster", "2", "3")
                 except Exception:
                     pass
+                self._free_device_handle(pointer)
+                self._free_device_handle(keyboard)
                 raise
 
     def remove_pair(self, pair: DevicePair) -> None:
         with self.lock:
-            # The XTEST slave devices are owned by their master pair. Xorg
-            # removes those virtual slaves together with the master pair;
-            # explicitly closing them can return XI_BadDevice on XTEST
-            # devices, so leave their client handles to be released when the
-            # shared X connection closes.
+            # Xorg removes the XTEST slave devices with their master pair.
+            # XCloseDevice can return XI_BadDevice for these auto-managed
+            # XTEST devices, so free the client-side XDevice structures
+            # directly after the server has removed the pair.
             try:
                 self._run_xinput(
                     "remove-master", str(pair.pointer_id), "AttachToMaster", "2", "3"
@@ -140,6 +165,8 @@ class XInputMPX:
             except subprocess.CalledProcessError:
                 pass
             self.x11.XSync(self.display, 0)
+            self._free_device_handle(pair.pointer)
+            self._free_device_handle(pair.keyboard)
 
     def move(self, pair: DevicePair, x: int, y: int) -> None:
         with self.lock:
