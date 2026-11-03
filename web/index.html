@@ -31,10 +31,10 @@ input,button{font:inherit;border-radius:9px;padding:11px 14px;border:1px solid #
 </section>
 <section class="panel">
 <h2>Shared desktop</h2>
-<p class="muted">Everyone approved sees the same desktop. Your pointer and keyboard are separate X11 devices, not just browser cursor drawings.</p>
+<p class="muted">Live WebRTC video. Your pointer and keyboard are separate X11 devices, not just browser cursor drawings.</p>
 <div id="screenWrap" class="waiting">
-<img id="screen" alt="Live shared host desktop">
-<div id="screenPlaceholder">Waiting for host approval and screen stream…</div>
+<video id="screen" autoplay playsinline muted></video>
+<div id="screenPlaceholder">Waiting for host approval and live video…</div>
 <div id="cursors"></div>
 </div>
 <p class="notice muted">Keep this tab open while using the desktop. Keyboard input is sent to the host while this page has focus. Click the screen first.</p>
@@ -47,8 +47,20 @@ const statusEl=document.querySelector("#status"),message=document.querySelector(
 const nameInput=document.querySelector("#name"),joinBtn=document.querySelector("#joinBtn");
 const wrap=document.querySelector("#screenWrap"),screen=document.querySelector("#screen");
 const placeholder=document.querySelector("#screenPlaceholder"),cursors=document.querySelector("#cursors");
-let connected=false,requested=false,approved=false,lastMove=0,pendingMove=null,moveScheduled=false;
+let connected=false,requested=false,approved=false,lastMove=0,pendingMove=null,moveScheduled=false,peer=null,startingVideo=false;
 function status(text){statusEl.textContent=text}
+function closeVideo(){startingVideo=false;if(peer){peer.ontrack=null;peer.close();peer=null}screen.srcObject=null}
+async function waitForIceGathering(pc){if(pc.iceGatheringState==="complete")return;await new Promise(resolve=>{const done=()=>{if(pc.iceGatheringState==="complete"){pc.removeEventListener("icegatheringstatechange",done);resolve()}};pc.addEventListener("icegatheringstatechange",done);setTimeout(resolve,10000)})}
+async function startVideo(){
+ if(!approved||startingVideo||peer)return;startingVideo=true;status("Approved · starting live video");
+ try{const config=await fetch("/api/webrtc-config").then(r=>r.json());const pc=new RTCPeerConnection(config);peer=pc;pc.addTransceiver("video",{direction:"recvonly"});
+ pc.ontrack=event=>{screen.srcObject=event.streams[0];screen.play().catch(()=>{});placeholder.hidden=true;wrap.classList.remove("waiting");status("Live video · WebRTC")};
+ pc.onconnectionstatechange=()=>{if(pc.connectionState==="failed")status("Video connection failed · check network/TURN settings");else if(pc.connectionState==="disconnected")status("Video reconnecting…")};
+ const offer=await pc.createOffer();await pc.setLocalDescription(offer);await waitForIceGathering(pc);if(peer===pc&&approved)socket.emit("webrtc_offer",{type:pc.localDescription.type,sdp:pc.localDescription.sdp});else pc.close();
+ }catch(error){startingVideo=false;status("Video error: "+error.message);message.textContent="Video could not start. Check the host installation and network.";closeVideo()}
+}
+socket.on("webrtc_answer",async description=>{if(!peer||!approved)return;try{await peer.setRemoteDescription(description);startingVideo=false}catch(error){status("Could not apply video answer: "+error.message);closeVideo()}});
+socket.on("webrtc_error",data=>{startingVideo=false;status(data.message||"WebRTC error");message.textContent=data.message||"Video connection failed."});
 function sendMove(e,immediate=false){
  const r=screen.getBoundingClientRect();
  if(!r.width||!r.height)return;
@@ -59,13 +71,13 @@ function sendMove(e,immediate=false){
  if(!moveScheduled){moveScheduled=true;requestAnimationFrame(()=>{moveScheduled=false;if(approved&&pendingMove){socket.emit("pointer",pendingMove);pendingMove=null}})}
 }
 socket.on("connect",()=>{connected=true;status("Connected · access not yet approved");message.textContent="Connected. Request access when you are ready.";joinBtn.disabled=false});
-socket.on("disconnect",()=>{connected=false;approved=false;status("Disconnected");message.textContent="Connection lost. Reconnecting…";wrap.classList.add("waiting");placeholder.hidden=false;joinBtn.disabled=true});
+socket.on("disconnect",()=>{connected=false;approved=false;closeVideo();status("Disconnected");message.textContent="Connection lost. Reconnecting…";wrap.classList.add("waiting");placeholder.hidden=false;joinBtn.disabled=true});
 socket.on("connect_error",()=>status("Connection error"));
 socket.on("join_pending",d=>{requested=true;message.textContent="Request sent as "+d.name+". Waiting for the host to approve you…";joinBtn.disabled=true;status("Waiting for approval")});
-socket.on("access_granted",d=>{approved=true;requested=true;status("Approved · independent pointer active");message.textContent="The host approved you. Click the desktop and start using it.";wrap.classList.remove("waiting");placeholder.hidden=true;joinBtn.disabled=true});
-socket.on("access_denied",d=>{approved=false;requested=false;status("Access denied");message.textContent=d.reason||"The host denied access.";wrap.classList.add("waiting");placeholder.hidden=false;joinBtn.disabled=false});
+socket.on("access_granted",d=>{approved=true;requested=true;status("Approved · independent pointer active");message.textContent="The host approved you. Live video is starting.";wrap.classList.remove("waiting");placeholder.hidden=false;joinBtn.disabled=true;startVideo()});
+socket.on("access_denied",d=>{approved=false;requested=false;closeVideo();status("Access denied");message.textContent=d.reason||"The host denied access.";wrap.classList.add("waiting");placeholder.hidden=false;joinBtn.disabled=false});
 socket.on("screen_info",d=>{screen.dataset.width=d.width;screen.dataset.height=d.height});
-socket.on("screen_frame",data=>{const blob=new Blob([data],{type:"image/jpeg"});const url=URL.createObjectURL(blob);const old=screen.src;screen.src=url;if(old.startsWith("blob:"))URL.revokeObjectURL(old);placeholder.hidden=true});
+
 socket.on("guest_cursor",d=>{
  let el=document.getElementById("cursor-"+d.id);
  if(!el){el=document.createElement("div");el.id="cursor-"+d.id;el.className="cursor";cursors.append(el)}
