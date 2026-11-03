@@ -16,12 +16,9 @@ if [[ -z "${DISPLAY:-}" ]]; then
 fi
 
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip xinput libx11-6 libxi6 libxtst6
+sudo apt install -y python3 python3-pip python3-numpy python3-pil xinput libx11-6 libxi6 libxtst6 pkg-config python3-dev build-essential
 
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python3 -m pip install --break-system-packages --upgrade -r requirements.txt
 
 mkdir -p "$HOME/.config/multidesk"
 chmod 700 "$HOME/.config/multidesk"
@@ -30,7 +27,6 @@ echo
 echo "MultiDesk dependencies installed."
 echo "Start the host with:"
 echo "  cd \"$ROOT\""
-echo "  source .venv/bin/activate"
-echo "  python host.py"
+echo "  python3 host.py"
 echo
 echo "Keep the admin token printed by the host private."
