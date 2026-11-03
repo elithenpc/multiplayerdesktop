@@ -1,0 +1,1 @@
+"""MultiDesk server package."""
