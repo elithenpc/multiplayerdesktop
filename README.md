@@ -1,63 +1,46 @@
 # MultiDesk
 
-MultiDesk is an experimental collaborative desktop project. One Linux X11 computer shares its screen with browser clients, requests host approval, and displays a separate labelled cursor for each participant.
+MultiDesk is the project for a browser-based collaborative desktop hosted by a Linux X11 computer.
 
-## Current implementation status
+## Current repository status
 
-This first version is a screen-sharing and input prototype, not yet a true multi-pointer desktop.
+The repository now contains the initial project scaffold:
 
-- Browser clients can request access and wait for host approval.
-- The host can approve or reject guests from a local admin page.
-- Approved guests receive JPEG screen updates and can send pointer/keyboard events.
-- Each guest has a separately rendered cursor overlay in the browser.
-- Input is currently injected into the host's single X11 pointer/keyboard using xdotool. The guest cursor overlays are independent, but the underlying desktop pointer is not. Concurrent interactions therefore share one real pointer and can conflict.
-- No hard participant cap is configured. Practical capacity depends on host CPU, network bandwidth and frame rate.
+- Python host entry point using Flask-SocketIO
+- Browser guest page
+- Host dashboard placeholder
+- Linux Mint installer and Python dependency list
 
-True simultaneous independent desktop pointers are not implemented yet. That requires XInput2 MPX master pointer/keyboard devices and per-device event injection, which is the next major engineering milestone. Do not treat the cursor overlays as proof of native MPX support.
+**This is not yet a working remote desktop.** Screen capture, host approval workflow, remote keyboard/mouse input, true independent cursors and internet transport are not implemented in this scaffold. Do not expose the current host service to an untrusted network.
 
-## Requirements
+## Required end goal
 
-- Linux Mint / Ubuntu running an X11 desktop session
-- Python 3.10+
-- xdotool, x11-utils
-- A reachable network connection; Tailscale is recommended for private remote access
+- One Linux Mint X11 computer shares its actual desktop.
+- Windows, Linux and macOS users connect from a browser.
+- Every guest sees the same live screen.
+- Every guest has a genuinely independent cursor and can click, type and scroll concurrently.
+- The host approves each connection.
+- Local Wi-Fi/Ethernet and remote connections through Tailscale or secured internet access.
+- No arbitrary software participant cap; capacity is limited by hardware and network resources.
 
-## Install
+## Technical milestones
+
+1. Implement screen capture and multi-viewer video delivery.
+2. Implement per-guest XInput2 MPX master pointer and keyboard devices. Browser cursor overlays alone do not count as independent desktop cursors.
+3. Route mouse and keyboard events to each guest's own XInput2 devices.
+4. Add host approval, revocation, authentication and audit logging.
+5. Add secure remote connectivity, HTTPS, rate limiting and reconnection handling.
+6. Test simultaneous multi-user interactions on Linux Mint Cinnamon X11.
+
+## Development environment
+
+Target host: Linux Mint Cinnamon on X11. Python 3.10+.
+
+Install the initial dependencies:
 
     git clone https://github.com/elithenpc/multiplayerdesktop.git
     cd multiplayerdesktop
     chmod +x install.sh
     ./install.sh
 
-The installer creates a Python virtual environment and a private host configuration at ~/.config/multidesk/.
-
-## Start
-
-    cd ~/multiplayerdesktop
-    source .venv/bin/activate
-    python host.py
-
-Open the printed host URL on the host computer and select Host dashboard. The first run prints an admin token in the terminal. Keep it private.
-
-Guests open http://HOST-IP:8765, choose a display name and request access. The host approves them in the dashboard.
-
-## Remote access
-
-For a private Tailscale network, install and sign in to Tailscale on the host and guest computers, then open the host's Tailscale IP on port 8765.
-
-For access by people outside your tailnet, use a properly configured HTTPS reverse proxy or Tailscale Funnel. Do not expose this prototype directly to the public internet without HTTPS and network-level access controls.
-
-## Security notes
-
-- The host approval gate is enabled by default.
-- The admin token grants control over guest access. Do not share it.
-- Approved guests can control the host desktop, including typing and clicking. Only approve people you trust.
-- This prototype is intended for trusted networks and experimentation, not production deployment.
-
-## Roadmap
-
-1. Implement true XInput2 MPX pointer and keyboard devices, one per guest.
-2. Route each guest's events to its own XInput2 device rather than the core pointer.
-3. Replace periodic JPEG frames with WebRTC video and an SFU for scalable multi-viewer streaming.
-4. Add HTTPS deployment, rate limiting, reconnection handling and per-session permissions.
-5. Add participant limits and bandwidth controls configurable by the host.
+The current host entry point is only a scaffold. Do not use it for remote control yet.
