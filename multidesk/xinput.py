@@ -53,12 +53,11 @@ class XInputMPX:
         self.xi.XOpenDevice.restype = ctypes.c_void_p
         self.xi.XCloseDevice.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
         self.xi.XCloseDevice.restype = ctypes.c_int
-        self.xi.XWarpDevicePointer.argtypes = [
-            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong,
-            ctypes.c_int, ctypes.c_int, ctypes.c_uint, ctypes.c_uint,
-            ctypes.c_int, ctypes.c_int,
+        self.xtst.XTestFakeDeviceMotionEvent.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_ulong
         ]
-        self.xi.XWarpDevicePointer.restype = ctypes.c_int
+        self.xtst.XTestFakeDeviceMotionEvent.restype = ctypes.c_int
         self.xtst.XTestFakeDeviceButtonEvent.argtypes = [
             ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_int,
             ctypes.c_int, ctypes.c_int, ctypes.c_ulong
@@ -125,10 +124,13 @@ class XInputMPX:
 
     def move(self, pair: DevicePair, x: int, y: int) -> None:
         with self.lock:
-            self.xi.XWarpDevicePointer(
-                self.display, pair.pointer, 0, 0, 0, 0, 0, int(x), int(y)
+            axes = (ctypes.c_int * 2)(int(x), int(y))
+            ok = self.xtst.XTestFakeDeviceMotionEvent(
+                self.display, pair.pointer, 0, 0, axes, 2, 0
             )
             self.x11.XSync(self.display, 0)
+            if not ok:
+                raise RuntimeError("XTest could not inject motion for this MPX pointer.")
 
     def button(self, pair: DevicePair, button: int, down: bool) -> None:
         with self.lock:
