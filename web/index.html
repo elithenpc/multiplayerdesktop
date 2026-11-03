@@ -49,12 +49,13 @@ const wrap=document.querySelector("#screenWrap"),screen=document.querySelector("
 const placeholder=document.querySelector("#screenPlaceholder"),cursors=document.querySelector("#cursors");
 let connected=false,requested=false,approved=false,lastMove=0,pendingMove=null,moveScheduled=false;
 function status(text){statusEl.textContent=text}
-function sendMove(e){
+function sendMove(e,immediate=false){
  const r=screen.getBoundingClientRect();
  if(!r.width||!r.height)return;
  const x=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
  const y=Math.max(0,Math.min(1,(e.clientY-r.top)/r.height));
  pendingMove={x,y};
+ if(immediate){socket.emit("pointer",pendingMove);pendingMove=null;return}
  if(!moveScheduled){moveScheduled=true;requestAnimationFrame(()=>{moveScheduled=false;if(approved&&pendingMove){socket.emit("pointer",pendingMove);pendingMove=null}})}
 }
 socket.on("connect",()=>{connected=true;status("Connected · access not yet approved");message.textContent="Connected. Request access when you are ready.";joinBtn.disabled=false});
@@ -74,7 +75,7 @@ socket.on("cursor_remove",d=>{const el=document.getElementById("cursor-"+d.id);i
 joinBtn.onclick=()=>{if(!connected)return;const name=(nameInput.value||"Guest").trim().slice(0,32)||"Guest";socket.emit("join_request",{name});joinBtn.disabled=true};
 screen.addEventListener("pointermove",e=>{if(approved)sendMove(e)});
 screen.addEventListener("pointerdown",e=>{
- if(!approved)return;e.preventDefault();screen.focus?.();sendMove(e);
+ if(!approved)return;e.preventDefault();screen.focus?.();sendMove(e,true);
  try{screen.setPointerCapture(e.pointerId)}catch{}
  const button=e.button===2?3:e.button===1?2:1;socket.emit("mouse",{button,down:true});
 });
