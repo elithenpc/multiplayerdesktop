@@ -14,6 +14,7 @@ try:
     print("Creating master pair", flush=True)
     pair = driver.create_pair("ci-smoke")
     print(f"Created master IDs {pair.pointer_id}/{pair.keyboard_id}", flush=True)
+    print(subprocess.run(["xinput", "list", "--short"], check=True, text=True, capture_output=True).stdout, flush=True)
     print("Sending motion", flush=True)
     driver.move(pair, 320, 240)
     print("Sending button", flush=True)
