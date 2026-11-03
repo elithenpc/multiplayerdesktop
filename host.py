@@ -6,6 +6,7 @@ import io
 import os
 import secrets
 import socket
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -46,7 +47,7 @@ socketio = SocketIO(
 xinput = XInputMPX()
 clients: dict[str, dict] = {}
 approved: dict[str, DevicePair] = {}
-last_input: dict[str, float] = {}
+last_input: dict[tuple[str, str], float] = {}
 state_lock = threading.RLock()
 screen_thread_started = False
 screen_size = {"width": 0, "height": 0}
@@ -65,7 +66,6 @@ def host_ip() -> str:
 
 def tailscale_ip() -> str | None:
     try:
-        import subprocess
         result = subprocess.run(
             ["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=2
         )
@@ -85,14 +85,16 @@ def pair_for(sid: str) -> DevicePair | None:
         return approved.get(sid)
 
 
-def input_allowed(sid: str) -> DevicePair | None:
+def input_allowed(sid: str, event_type: str) -> DevicePair | None:
     now = time.monotonic()
     with state_lock:
         pair = approved.get(sid)
-        previous = last_input.get(sid, 0.0)
-        if pair is None or now - previous < 0.001:
+        key = (sid, event_type)
+        previous = last_input.get(key, 0.0)
+        minimum_interval = 0.0015 if event_type == "pointer" else 0.0002
+        if pair is None or now - previous < minimum_interval:
             return None
-        last_input[sid] = now
+        last_input[key] = now
         return pair
 
 
@@ -244,7 +246,7 @@ def on_disconnect():
 
 @socketio.on("pointer")
 def pointer(data):
-    pair = input_allowed(request.sid)
+    pair = input_allowed(request.sid, "pointer")
     if pair is None:
         return
     try:
@@ -271,7 +273,7 @@ def pointer(data):
 
 @socketio.on("mouse")
 def mouse(data):
-    pair = input_allowed(request.sid)
+    pair = input_allowed(request.sid, "mouse")
     if pair is None:
         return
     try:
@@ -287,7 +289,7 @@ def mouse(data):
 
 @socketio.on("wheel")
 def wheel(data):
-    pair = input_allowed(request.sid)
+    pair = input_allowed(request.sid, "wheel")
     if pair is None:
         return
     try:
@@ -328,7 +330,7 @@ for digit in "0123456789":
 
 @socketio.on("key")
 def key(data):
-    pair = input_allowed(request.sid)
+    pair = input_allowed(request.sid, "key")
     if pair is None:
         return
     code = str(data.get("code", ""))[:24]
