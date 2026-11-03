@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MultiDesk</title>
+<style>
+body{margin:0;background:#10131a;color:#edf1f7;font:15px system-ui}header{padding:18px 22px;background:#191f2b}main{max-width:1100px;margin:28px auto;padding:0 18px}.panel{background:#1b2330;border:1px solid #303b4c;border-radius:14px;padding:18px;margin-bottom:18px}input,button{font:inherit;border-radius:8px;padding:11px 14px;border:1px solid #46546a}input{background:#111722;color:white}button{background:#4778d0;color:white;cursor:pointer}.muted{color:#aab5c5}#screenWrap{position:relative;background:#05070a;min-height:260px}#screen{width:100%;display:block}#cursors{position:absolute;inset:0;pointer-events:none}.cursor{position:absolute;background:#17243a;border:1px solid #8eb5ff;padding:3px 6px;border-radius:5px}
+</style></head><body><header><strong>MultiDesk</strong> <span id="status">Not connected</span></header><main>
+<section class="panel"><h2>Join a desktop</h2><p class="muted">Enter a display name and request permission from the host.</p><input id="name" maxlength="32" placeholder="Your name"> <button id="joinBtn">Request access</button><p id="message" class="muted"></p></section>
+<section class="panel"><h2>Shared screen</h2><div id="screenWrap"><img id="screen" alt="Shared host screen"><div id="cursors"></div></div><p class="muted">Experimental client. Host approval is required before interaction.</p></section></main>
+<script src="/socket.io/socket.io.js"></script><script>
+const socket=io();let granted=false;
+const status=document.querySelector('#status'),message=document.querySelector('#message'),screen=document.querySelector('#screen'),wrap=document.querySelector('#screenWrap'),cursors=document.querySelector('#cursors');
+socket.on('connect',()=>status.textContent='Connected · awaiting approval');
+socket.on('join_pending',d=>message.textContent='Request sent as '+d.name+'. Waiting for host approval…');
+socket.on('access_granted',()=>{granted=true;message.textContent='Access approved.';status.textContent='Approved'});
+socket.on('access_denied',d=>{granted=false;message.textContent=d.reason||'Access denied';status.textContent='Not approved'});
+socket.on('screen_frame',bytes=>{const blob=new Blob([bytes],{type:'image/jpeg'});const url=URL.createObjectURL(blob);const old=screen.src;screen.src=url;if(old.startsWith('blob:'))URL.revokeObjectURL(old)});
+socket.on('guest_cursor',d=>{let el=document.getElementById('cursor-'+d.id);if(!el){el=document.createElement('div');el.id='cursor-'+d.id;el.className='cursor';cursors.append(el)}el.textContent=d.name;el.style.left=(d.x*100)+'%';el.style.top=(d.y*100)+'%'});
+document.querySelector('#joinBtn').onclick=()=>socket.emit('join_request',{name:document.querySelector('#name').value||'Guest'});
+</script></body></html>
