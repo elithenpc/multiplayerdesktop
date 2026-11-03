@@ -53,10 +53,10 @@ class XInputMPX:
         self.xi.XOpenDevice.restype = ctypes.c_void_p
         self.xi.XCloseDevice.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
         self.xi.XCloseDevice.restype = ctypes.c_int
-        self.xi.XSetDeviceFocus.argtypes = [
-            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong
+        self.xi.XISetFocus.argtypes = [
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong
         ]
-        self.xi.XSetDeviceFocus.restype = ctypes.c_int
+        self.xi.XISetFocus.restype = ctypes.c_int
         self.xtst.XTestFakeDeviceMotionEvent.argtypes = [
             ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
             ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_ulong
@@ -107,9 +107,9 @@ class XInputMPX:
                     raise RuntimeError("XOpenDevice failed for the new MPX pointer or keyboard.")
                 # PointerRoot makes this guest keyboard follow its own paired
                 # master pointer, rather than the host's single keyboard focus.
-                focus_ok = self.xi.XSetDeviceFocus(self.display, keyboard, 1, 1, 0)
+                focus_status = self.xi.XISetFocus(self.display, keyboard_id, 1, 0)
                 self.x11.XSync(self.display, 0)
-                if not focus_ok:
+                if focus_status != 0:
                     self.xi.XCloseDevice(self.display, pointer)
                     self.xi.XCloseDevice(self.display, keyboard)
                     raise RuntimeError("Could not set the guest keyboard to its own pointer focus.")
