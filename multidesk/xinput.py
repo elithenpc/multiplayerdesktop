@@ -60,11 +60,13 @@ class XInputMPX:
         ]
         self.xi.XWarpDevicePointer.restype = ctypes.c_int
         self.xtst.XTestFakeDeviceButtonEvent.argtypes = [
-            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, ctypes.c_ulong
         ]
         self.xtst.XTestFakeDeviceButtonEvent.restype = ctypes.c_int
         self.xtst.XTestFakeDeviceKeyEvent.argtypes = [
-            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, ctypes.c_ulong
         ]
         self.xtst.XTestFakeDeviceKeyEvent.restype = ctypes.c_int
 
@@ -131,7 +133,7 @@ class XInputMPX:
     def button(self, pair: DevicePair, button: int, down: bool) -> None:
         with self.lock:
             ok = self.xtst.XTestFakeDeviceButtonEvent(
-                self.display, pair.pointer, int(button), int(bool(down)), 0
+                self.display, pair.pointer, int(button), int(bool(down)), 0, 0, 0
             )
             self.x11.XSync(self.display, 0)
             if not ok:
@@ -146,7 +148,7 @@ class XInputMPX:
             return
         with self.lock:
             ok = self.xtst.XTestFakeDeviceKeyEvent(
-                self.display, pair.keyboard, int(code), int(bool(down)), 0
+                self.display, pair.keyboard, int(code), int(bool(down)), 0, 0, 0
             )
             self.x11.XSync(self.display, 0)
             if not ok:
