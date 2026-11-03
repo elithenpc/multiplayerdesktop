@@ -22,3 +22,14 @@ jobs:
         run: python -m compileall -q host.py multidesk
       - name: Check shell syntax
         run: bash -n install.sh
+      - name: Install X11 test server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xinput libxi6 libxtst6
+      - name: Test real MPX input injection under Xvfb
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          sleep 2
+          DISPLAY=:99 python tests/mpx_smoke.py
