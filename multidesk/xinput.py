@@ -93,12 +93,23 @@ class XInputMPX:
                 keyboard_match = re.search(
                     rf"{re.escape(name)} keyboard\s+id=(\d+)", listing
                 )
-                if not pointer_match or not keyboard_match:
-                    raise RuntimeError("XInput created the guest devices but their IDs could not be found.")
+                xtest_pointer_match = re.search(
+                    rf"{re.escape(name)} XTEST pointer\s+id=(\d+)", listing
+                )
+                xtest_keyboard_match = re.search(
+                    rf"{re.escape(name)} XTEST keyboard\s+id=(\d+)", listing
+                )
+                if not all((pointer_match, keyboard_match, xtest_pointer_match, xtest_keyboard_match)):
+                    raise RuntimeError("XInput created the master pair but its paired XTEST slave devices could not be found.")
                 pointer_id = int(pointer_match.group(1))
                 keyboard_id = int(keyboard_match.group(1))
-                pointer = self.xi.XOpenDevice(self.display, pointer_id)
-                keyboard = self.xi.XOpenDevice(self.display, keyboard_id)
+                pointer_test_id = int(xtest_pointer_match.group(1))
+                keyboard_test_id = int(xtest_keyboard_match.group(1))
+                # XOpenDevice cannot open master devices. XTEST creates a
+                # virtual slave for each master; injecting through that slave
+                # routes events to its paired master device.
+                pointer = self.xi.XOpenDevice(self.display, pointer_test_id)
+                keyboard = self.xi.XOpenDevice(self.display, keyboard_test_id)
                 if not pointer or not keyboard:
                     if pointer:
                         self.xi.XCloseDevice(self.display, pointer)
