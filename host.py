@@ -157,10 +157,16 @@ def client_action(sid: str, action: str):
             return jsonify(error=f"Could not create independent X11 devices: {exc}"), 500
         with state_lock:
             if sid not in clients:
-                xinput.remove_pair(pair)
-                return jsonify(error="Guest disconnected during approval"), 409
-            approved[sid] = pair
-        socketio.emit("access_granted", {"name": clients[sid]["name"]}, to=sid)
+                disconnected = True
+                guest_name = ""
+            else:
+                disconnected = False
+                approved[sid] = pair
+                guest_name = clients[sid]["name"]
+        if disconnected:
+            xinput.remove_pair(pair)
+            return jsonify(error="Guest disconnected during approval"), 409
+        socketio.emit("access_granted", {"name": guest_name}, to=sid)
         socketio.emit("approval_changed", {"id": sid, "approved": True})
         return jsonify(ok=True, message="Approved with an independent X11 pointer and keyboard")
 
