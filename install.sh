@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd -- "$(dirname -- "\${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-if [[ "\${XDG_SESSION_TYPE:-}" != "x11" ]]; then
+if [[ "${XDG_SESSION_TYPE:-}" != "x11" ]]; then
   echo "ERROR: MultiDesk requires an X11 desktop session."
   echo "Log out, select the Cinnamon on Xorg/X11 session, and run this installer again."
   exit 1
 fi
 
-if [[ -z "\${DISPLAY:-}" ]]; then
+if [[ -z "${DISPLAY:-}" ]]; then
   echo "ERROR: DISPLAY is not set. Run this installer from your logged-in desktop terminal."
   exit 1
 fi
