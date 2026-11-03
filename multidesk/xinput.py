@@ -73,7 +73,7 @@ class XInputMPX:
         self.xtst.XTestFakeDeviceButtonEvent.restype = ctypes.c_int
         self.xtst.XTestFakeDeviceKeyEvent.argtypes = [
             ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_int,
-            ctypes.c_int, ctypes.c_int, ctypes.c_ulong
+            ctypes.POINTER(ctypes.c_int), ctypes.c_int, ctypes.c_ulong
         ]
         self.xtst.XTestFakeDeviceKeyEvent.restype = ctypes.c_int
 
