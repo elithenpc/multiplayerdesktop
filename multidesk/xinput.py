@@ -9,13 +9,21 @@ import threading
 from dataclasses import dataclass
 
 
+class XDeviceStruct(ctypes.Structure):
+    _fields_ = [
+        ("device_id", ctypes.c_ulong),
+        ("num_classes", ctypes.c_int),
+        ("classes", ctypes.c_void_p),
+    ]
+
+
 @dataclass
 class DevicePair:
     name: str
     pointer_id: int
     keyboard_id: int
-    pointer: int
-    keyboard: int
+    pointer: ctypes.POINTER(XDeviceStruct)
+    keyboard: ctypes.POINTER(XDeviceStruct)
 
 
 class XInputMPX:
@@ -49,8 +57,6 @@ class XInputMPX:
         self.x11.XStringToKeysym.restype = ctypes.c_ulong
         self.x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
         self.x11.XKeysymToKeycode.restype = ctypes.c_uint
-        self.xi.XOpenDevice.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
-        self.xi.XOpenDevice.restype = ctypes.c_void_p
         self.xi.XISetFocus.argtypes = [
             ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong
         ]
@@ -105,13 +111,12 @@ class XInputMPX:
                 keyboard_id = int(keyboard_match.group(1))
                 pointer_test_id = int(xtest_pointer_match.group(1))
                 keyboard_test_id = int(xtest_keyboard_match.group(1))
-                # XOpenDevice cannot open master devices. XTEST creates a
-                # virtual slave for each master; injecting through that slave
-                # routes events to its paired master device.
-                pointer = self.xi.XOpenDevice(self.display, pointer_test_id)
-                keyboard = self.xi.XOpenDevice(self.display, keyboard_test_id)
-                if not pointer or not keyboard:
-                    raise RuntimeError("XOpenDevice failed for the new MPX XTEST pointer or keyboard.")
+                # XTestFakeDevice* only reads the device_id field from
+                # XDevice. Build lightweight handles for the XTEST slave IDs
+                # instead of opening devices, which avoids leaving open-device
+                # references behind when Xorg destroys a guest's master pair.
+                pointer = ctypes.pointer(XDeviceStruct(pointer_test_id, 0, None))
+                keyboard = ctypes.pointer(XDeviceStruct(keyboard_test_id, 0, None))
                 # PointerRoot makes this guest keyboard follow its own paired
                 # master pointer, rather than the host's single keyboard focus.
                 focus_status = self.xi.XISetFocus(self.display, keyboard_id, 1, 0)
@@ -128,10 +133,7 @@ class XInputMPX:
 
     def remove_pair(self, pair: DevicePair) -> None:
         with self.lock:
-            # Xorg removes the XTEST slave devices with their master pair.
-            # XCloseDevice can return XI_BadDevice for these auto-managed
-            # XTEST devices, so free the client-side XDevice structures
-            # directly after the server has removed the pair.
+            # Xorg removes the XTEST slave devices together with their master pair.
             try:
                 self._run_xinput(
                     "remove-master", str(pair.pointer_id), "AttachToMaster", "2", "3"
