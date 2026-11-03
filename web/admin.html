@@ -1,2 +1,56 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MultiDesk host</title>
-<style>body{margin:0;background:#10131a;color:#edf1f7;font:15px system-ui}main{max-width:850px;margin:35px auto;padding:0 18px}.box{background:#1b2330;border:1px solid #303b4c;border-radius:12px;padding:18px;margin:14px 0}input,button{padding:10px 13px;border-radius:8px;border:1px solid #46546a;font:inherit}input{background:#111722;color:white}button{background:#4778d0;color:white;cursor:pointer}.muted{color:#aab5c5}</style></head><body><main><h1>MultiDesk host dashboard</h1><div class="box"><p class="muted">Host approval controls will appear here once the server's authentication and session manager are enabled.</p></div></main></body></html>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MultiDesk host dashboard</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0d1119;color:#edf2fa;font:15px system-ui,-apple-system,sans-serif}
+main{max-width:900px;margin:36px auto;padding:0 18px}h1{font-size:26px;margin:0 0 8px}.muted{color:#a9b7ca;line-height:1.5}
+.box{background:#171f2c;border:1px solid #2b3749;border-radius:13px;padding:19px;margin:16px 0}
+input,button{font:inherit;padding:10px 13px;border-radius:9px;border:1px solid #46556c}input{background:#0f1621;color:white;width:min(100%,440px)}button{background:#477bd4;color:white;cursor:pointer;font-weight:650;margin:3px}button.danger{background:#a74450}button.secondary{background:#34445d}
+.guest{display:flex;justify-content:space-between;align-items:center;gap:12px;border-top:1px solid #344154;padding:14px 0;flex-wrap:wrap}.guest:first-child{border-top:0}.guest-name{font-weight:700}.guest-meta{font-size:13px;color:#a9b7ca;margin-top:4px}.actions{display:flex;gap:5px;flex-wrap:wrap}
+#status{margin-top:10px}.pill{display:inline-block;border-radius:99px;background:#293b55;padding:4px 9px;font-size:12px;margin-left:7px}.pill.approved{background:#24533e}.empty{padding:16px 0;color:#a9b7ca}
+</style></head><body><main>
+<h1>MultiDesk host dashboard</h1>
+<p class="muted">Review every connection request. Approval creates a dedicated XInput2 master pointer and keyboard for that guest. Revoking access removes those devices immediately.</p>
+<section class="box">
+<h3>Host authentication</h3><p class="muted">The admin token is printed in the host terminal on startup. It is stored in this browser tab only.</p>
+<input id="token" type="password" autocomplete="off" placeholder="Paste host admin token"> <button id="unlock">Unlock dashboard</button>
+<p id="status" class="muted">Dashboard locked.</p>
+</section>
+<section class="box">
+<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">Connected guests</h2><button id="refresh" class="secondary" disabled>Refresh</button></div>
+<p class="muted">There is no fixed participant limit in the application. Actual capacity depends on your computer, desktop environment and network.</p>
+<div id="clients"><div class="empty">Unlock the dashboard to see connection requests.</div></div>
+</section>
+<section class="box"><h3>Safety</h3><p class="muted">An approved guest can control your computer with their own pointer and keyboard. Only approve people you trust. Stop the host process with Ctrl+C to close the service and remove guest devices.</p></section>
+</main>
+<script>
+let token=sessionStorage.getItem("multidesk-admin-token")||"",timer=null;
+const tokenInput=document.querySelector("#token"),statusEl=document.querySelector("#status"),list=document.querySelector("#clients"),refreshBtn=document.querySelector("#refresh");
+tokenInput.value=token;
+async function api(path,options={}){return fetch(path,{...options,headers:{"Content-Type":"application/json","Authorization":"Bearer "+token,...(options.headers||{})}})}
+function showStatus(t){statusEl.textContent=t}
+async function refresh(){
+ const r=await api("/api/clients");
+ if(!r.ok){showStatus("Authentication failed or host is unavailable.");refreshBtn.disabled=true;return}
+ const guests=await r.json();showStatus("Dashboard unlocked · "+guests.length+" connected guest(s)");refreshBtn.disabled=false;list.replaceChildren();
+ if(!guests.length){const empty=document.createElement("div");empty.className="empty";empty.textContent="No guests connected. Share the guest URL to invite someone.";list.append(empty);return}
+ for(const guest of guests){
+  const row=document.createElement("div");row.className="guest";
+  const info=document.createElement("div"),name=document.createElement("div"),meta=document.createElement("div");
+  name.className="guest-name";name.textContent=guest.name;
+  const badge=document.createElement("span");badge.className="pill"+(guest.approved?" approved":"");badge.textContent=guest.approved?"Approved":"Awaiting approval";name.append(badge);
+  meta.className="guest-meta";meta.textContent="Connection ID: "+guest.id.slice(0,12);
+  info.append(name,meta);row.append(info);
+  const actions=document.createElement("div");actions.className="actions";
+  const buttons=guest.approved?[["revoke","Revoke","secondary"],["kick","Disconnect","danger"]]:[["approve","Approve",""],["reject","Reject","danger"],["kick","Disconnect","secondary"]];
+  for(const [action,label,style] of buttons){
+   const b=document.createElement("button");b.textContent=label;if(style)b.className=style;
+   b.onclick=async()=>{b.disabled=true;const response=await api("/api/clients/"+encodeURIComponent(guest.id)+"/"+action,{method:"POST"});const result=await response.json().catch(()=>({}));if(!response.ok)showStatus(result.error||"Action failed.");await refresh()};
+   actions.append(b);
+  }
+  row.append(actions);list.append(row);
+ }
+}
+document.querySelector("#unlock").onclick=async()=>{token=tokenInput.value.trim();if(!token){showStatus("Enter the admin token.");return}sessionStorage.setItem("multidesk-admin-token",token);await refresh();if(!timer)timer=setInterval(refresh,2500)};
+refreshBtn.onclick=refresh;
+if(token){refresh().then(()=>{if(!timer)timer=setInterval(refresh,2500)})}
+</script></body></html>
