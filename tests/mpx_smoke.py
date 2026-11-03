@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Runtime smoke test for MPX creation and per-device event injection."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from multidesk.xinput import XInputMPX
 
 driver = XInputMPX()
