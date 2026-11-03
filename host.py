@@ -2,7 +2,6 @@
 """MultiDesk: approved multi-user X11 desktop sharing using XInput2 MPX."""
 from __future__ import annotations
 
-import io
 import os
 import secrets
 import socket
@@ -13,8 +12,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, join_room
-from mss import mss
-from PIL import Image
+from multidesk.video import WebRTCManager
 
 from multidesk.xinput import DevicePair, XInputMPX
 
@@ -30,8 +28,10 @@ ADMIN_TOKEN = TOKEN_FILE.read_text().strip()
 
 HOST = os.environ.get("MULTIDESK_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MULTIDESK_PORT", "8765"))
-FPS = max(1, min(12, int(os.environ.get("MULTIDESK_FPS", "6"))))
-JPEG_QUALITY = max(35, min(85, int(os.environ.get("MULTIDESK_JPEG_QUALITY", "62"))))
+STUN_URL = os.environ.get("MULTIDESK_STUN_URL", "stun:stun.l.google.com:19302")
+TURN_URLS = [u.strip() for u in os.environ.get("MULTIDESK_TURN_URL", "").split(",") if u.strip()]
+TURN_USERNAME = os.environ.get("MULTIDESK_TURN_USERNAME", "")
+TURN_PASSWORD = os.environ.get("MULTIDESK_TURN_PASSWORD", "")
 
 app = Flask(__name__, static_folder=None)
 app.config["SECRET_KEY"] = secrets.token_urlsafe(32)
@@ -49,8 +49,19 @@ clients: dict[str, dict] = {}
 approved: dict[str, DevicePair] = {}
 last_input: dict[tuple[str, str], float] = {}
 state_lock = threading.RLock()
-screen_thread_started = False
 screen_size = {"width": 0, "height": 0}
+
+
+def update_screen_size(width: int, height: int):
+    screen_size["width"], screen_size["height"] = width, height
+    socketio.emit("screen_info", screen_size)
+
+
+def emit_to_guest(event: str, data: dict, sid: str):
+    socketio.emit(event, data, to=sid)
+
+
+video = WebRTCManager(update_screen_size, emit_to_guest)
 
 
 def host_ip() -> str:
@@ -115,8 +126,16 @@ def status():
             connected=len(clients),
             approved=len(approved),
             screen=screen_size,
-            fps=FPS,
+            video="WebRTC",
         )
+
+
+@app.get("/api/webrtc-config")
+def webrtc_config():
+    ice_servers = [{"urls": [STUN_URL]}] if STUN_URL else []
+    if TURN_URLS and TURN_USERNAME and TURN_PASSWORD:
+        ice_servers.append({"urls": TURN_URLS, "username": TURN_USERNAME, "credential": TURN_PASSWORD})
+    return jsonify(iceServers=ice_servers)
 
 
 @app.get("/api/clients")
@@ -173,6 +192,7 @@ def client_action(sid: str, action: str):
     if existing:
         with state_lock:
             approved.pop(sid, None)
+        video.close(sid)
         xinput.remove_pair(existing)
     socketio.emit("access_denied", {"reason": "The host revoked or denied access"}, to=sid)
     socketio.emit("approval_changed", {"id": sid, "approved": False})
@@ -181,43 +201,12 @@ def client_action(sid: str, action: str):
     return jsonify(ok=True)
 
 
-def screen_loop():
-    with mss() as capture:
-        monitor = capture.monitors[0]
-        screen_size["width"] = monitor["width"]
-        screen_size["height"] = monitor["height"]
-        socketio.emit("screen_info", screen_size)
-        while True:
-            with state_lock:
-                recipients = list(approved.keys())
-            if recipients:
-                try:
-                    shot = capture.grab(monitor)
-                    frame = Image.frombytes("RGB", shot.size, shot.rgb)
-                    frame.thumbnail((1920, 1200), Image.Resampling.LANCZOS)
-                    output = io.BytesIO()
-                    frame.save(
-                        output, format="JPEG", quality=JPEG_QUALITY,
-                        optimize=True, progressive=True
-                    )
-                    payload = output.getvalue()
-                    for sid in recipients:
-                        socketio.emit("screen_frame", payload, to=sid)
-                except Exception:
-                    app.logger.exception("Screen capture failed")
-            socketio.sleep(1.0 / FPS)
-
-
 @socketio.on("connect")
 def on_connect():
-    global screen_thread_started
     sid = request.sid
     join_room(sid)
     with state_lock:
         clients[sid] = {"name": "Connecting", "connected_at": int(time.time())}
-    if not screen_thread_started:
-        screen_thread_started = True
-        socketio.start_background_task(screen_loop)
     socketio.emit("server_status", {"approval_required": True}, to=sid)
     socketio.emit("client_list_changed")
 
@@ -234,6 +223,22 @@ def join_request(data):
     socketio.emit("client_list_changed")
 
 
+@socketio.on("webrtc_offer")
+def webrtc_offer(data):
+    sid = request.sid
+    if pair_for(sid) is None:
+        socketio.emit("webrtc_error", {"message": "Host approval is required before video starts."}, to=sid)
+        return
+    try:
+        description = {"sdp": str((data or {}).get("sdp", "")), "type": str((data or {}).get("type", ""))}
+        if not description["sdp"] or description["type"] != "offer":
+            raise ValueError("Invalid WebRTC offer")
+        video.offer(sid, description)
+    except Exception as exc:
+        app.logger.exception("WebRTC setup failed for %s", sid)
+        socketio.emit("webrtc_error", {"message": f"Could not start video: {exc}"}, to=sid)
+
+
 @socketio.on("disconnect")
 def on_disconnect():
     sid = request.sid
@@ -242,6 +247,7 @@ def on_disconnect():
         pair = approved.pop(sid, None)
         for key in [key for key in last_input if key[0] == sid]:
             last_input.pop(key, None)
+    video.close(sid)
     if pair:
         try:
             xinput.remove_pair(pair)
@@ -364,6 +370,7 @@ if __name__ == "__main__":
     print()
     print("MultiDesk host is starting.")
     print("XInput2 MPX self-test passed.")
+    print("Video transport: WebRTC (VP8).")
     print(f"Guest URL: http://{host_ip()}:{PORT}")
     tail_ip = tailscale_ip()
     if tail_ip:
@@ -376,6 +383,7 @@ if __name__ == "__main__":
     try:
         socketio.run(app, host=HOST, port=PORT, allow_unsafe_werkzeug=True)
     finally:
+        video.shutdown()
         with state_lock:
             pairs = list(approved.values())
             approved.clear()
