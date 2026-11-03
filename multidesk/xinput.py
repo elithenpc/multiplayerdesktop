@@ -111,18 +111,12 @@ class XInputMPX:
                 pointer = self.xi.XOpenDevice(self.display, pointer_test_id)
                 keyboard = self.xi.XOpenDevice(self.display, keyboard_test_id)
                 if not pointer or not keyboard:
-                    if pointer:
-                        self.xi.XCloseDevice(self.display, pointer)
-                    if keyboard:
-                        self.xi.XCloseDevice(self.display, keyboard)
-                    raise RuntimeError("XOpenDevice failed for the new MPX pointer or keyboard.")
+                    raise RuntimeError("XOpenDevice failed for the new MPX XTEST pointer or keyboard.")
                 # PointerRoot makes this guest keyboard follow its own paired
                 # master pointer, rather than the host's single keyboard focus.
                 focus_status = self.xi.XISetFocus(self.display, keyboard_id, 1, 0)
                 self.x11.XSync(self.display, 0)
                 if focus_status != 0:
-                    self.xi.XCloseDevice(self.display, pointer)
-                    self.xi.XCloseDevice(self.display, keyboard)
                     raise RuntimeError("Could not set the guest keyboard to its own pointer focus.")
                 return DevicePair(name, pointer_id, keyboard_id, pointer, keyboard)
             except Exception:
@@ -134,8 +128,11 @@ class XInputMPX:
 
     def remove_pair(self, pair: DevicePair) -> None:
         with self.lock:
-            self.xi.XCloseDevice(self.display, pair.pointer)
-            self.xi.XCloseDevice(self.display, pair.keyboard)
+            # The XTEST slave devices are owned by their master pair. Xorg
+            # removes those virtual slaves together with the master pair;
+            # explicitly closing them can return XI_BadDevice on XTEST
+            # devices, so leave their client handles to be released when the
+            # shared X connection closes.
             try:
                 self._run_xinput(
                     "remove-master", str(pair.pointer_id), "AttachToMaster", "2", "3"
