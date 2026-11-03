@@ -155,7 +155,7 @@ class XInputMPX:
     def button(self, pair: DevicePair, button: int, down: bool) -> None:
         with self.lock:
             ok = self.xtst.XTestFakeDeviceButtonEvent(
-                self.display, pair.pointer, int(button), int(bool(down)), None, 0, 0
+                self.display, pair.pointer, int(button), int(bool(down)), ctypes.POINTER(ctypes.c_int)(), 0, 0
             )
             self.x11.XSync(self.display, 0)
             if not ok:
@@ -170,7 +170,7 @@ class XInputMPX:
             return
         with self.lock:
             ok = self.xtst.XTestFakeDeviceKeyEvent(
-                self.display, pair.keyboard, int(code), int(bool(down)), None, 0, 0
+                self.display, pair.keyboard, int(code), int(bool(down)), ctypes.POINTER(ctypes.c_int)(), 0, 0
             )
             self.x11.XSync(self.display, 0)
             if not ok:
