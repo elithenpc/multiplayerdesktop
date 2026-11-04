@@ -174,7 +174,7 @@ class XInputMPX:
             ok = self.xtst.XTestFakeDeviceKeyEvent(
                 self.display, pair.keyboard, int(code), int(bool(down)), ctypes.POINTER(ctypes.c_int)(), 0, 0
             )
-            self.x11.XSync(self.display, 0)
+            self.x11.XFlush(self.display)
             if not ok:
                 raise RuntimeError("XTest could not inject a key event for this MPX keyboard.")
 
