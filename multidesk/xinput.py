@@ -71,8 +71,10 @@ class XInputMPX:
         self.x11.XDefaultRootWindow.restype = ctypes.c_ulong
         self.x11.XFreeCursor.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
         self.x11.XFreeCursor.restype = ctypes.c_int
-        self.xi.XIChangeCursor.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong]
-        self.xi.XIChangeCursor.restype = ctypes.c_int
+        self.xi.XIDefineCursor.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong]
+        self.xi.XIDefineCursor.restype = ctypes.c_int
+        self.xi.XIUndefineCursor.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong]
+        self.xi.XIUndefineCursor.restype = ctypes.c_int
         self.xcursor.XcursorImageCreate.argtypes = [ctypes.c_uint, ctypes.c_uint]
         self.xcursor.XcursorImageCreate.restype = ctypes.POINTER(XcursorImage)
         self.xcursor.XcursorImageDestroy.argtypes = [ctypes.POINTER(XcursorImage)]
@@ -196,7 +198,7 @@ class XInputMPX:
             if not cursor_id:
                 raise RuntimeError("Xcursor could not create the named cursor.")
             root = self.x11.XDefaultRootWindow(self.display)
-            status = self.xi.XIChangeCursor(self.display, pair.pointer_id, root, cursor_id)
+            status = self.xi.XIDefineCursor(self.display, pair.pointer_id, root, cursor_id)
             self.x11.XFlush(self.display)
             if status != 0:
                 self.x11.XFreeCursor(self.display, cursor_id)
@@ -210,7 +212,7 @@ class XInputMPX:
         with self.lock:
             if pair.cursor_id:
                 root = self.x11.XDefaultRootWindow(self.display)
-                self.xi.XIChangeCursor(self.display, pair.pointer_id, root, 0)
+                self.xi.XIUndefineCursor(self.display, pair.pointer_id, root)
                 self.x11.XFreeCursor(self.display, pair.cursor_id)
                 pair.cursor_id = 0
                 self.x11.XFlush(self.display)
