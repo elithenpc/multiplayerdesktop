@@ -31,7 +31,7 @@ class SharedDesktopCapture:
     def __init__(self, on_size: Callable[[int, int], None]):
         self.on_size = on_size
         self.lock = threading.Lock()
-        self.latest: np.ndarray | None = None
+        self.latest: dict[str, np.ndarray] = {}
         self.running = True
         self.error: Exception | None = None
         self.thread = threading.Thread(target=self._capture_loop, name="multidesk-screen-capture", daemon=True)
@@ -45,12 +45,14 @@ class SharedDesktopCapture:
                 deadline = time.monotonic()
                 while self.running:
                     shot = capture.grab(monitor)
-                    image = Image.frombytes("RGB", shot.size, shot.rgb)
-                    if image.width > VIDEO_WIDTH or image.height > VIDEO_HEIGHT:
-                        image.thumbnail((VIDEO_WIDTH, VIDEO_HEIGHT), Image.Resampling.BILINEAR)
-                    frame = np.asarray(image, dtype=np.uint8)
+                    source = Image.frombytes("RGB", shot.size, shot.rgb)
+                    scaled = {}
+                    for profile, (max_width, max_height) in RESOLUTION_PROFILES.items():
+                        image = source.copy()
+                        image.thumbnail((max_width, max_height), Image.Resampling.BILINEAR)
+                        scaled[profile] = np.asarray(image, dtype=np.uint8)
                     with self.lock:
-                        self.latest = frame
+                        self.latest = scaled
                     deadline += FRAME_INTERVAL
                     delay = deadline - time.monotonic()
                     if delay > 0:
@@ -61,9 +63,9 @@ class SharedDesktopCapture:
             self.error = exc
             self.running = False
 
-    def get_frame(self) -> np.ndarray:
+    def get_frame(self, resolution: str) -> np.ndarray:
         with self.lock:
-            frame = self.latest
+            frame = self.latest.get(resolution)
         if frame is None:
             if self.error:
                 raise RuntimeError(f"Desktop capture failed: {self.error}") from self.error
@@ -97,11 +99,7 @@ class DesktopVideoTrack(VideoStreamTrack):
             await asyncio.sleep(delay)
         self._last_frame_time = time.monotonic()
 
-        image = self.shared_capture.get_frame()
-        if image.shape[1] > self.max_width or image.shape[0] > self.max_height:
-            resized = Image.fromarray(image)
-            resized.thumbnail((self.max_width, self.max_height), Image.Resampling.BILINEAR)
-            image = np.asarray(resized, dtype=np.uint8)
+        image = self.shared_capture.get_frame(self.resolution)
         frame = VideoFrame.from_ndarray(image, format="rgb24")
         self._frame_index += 1
         frame.pts = round(self._frame_index * VIDEO_CLOCK_RATE / VIDEO_FPS)
