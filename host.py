@@ -13,7 +13,6 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, join_room
 from multidesk.video import WebRTCManager
-from multidesk.overlay import CursorNameOverlay
 
 from multidesk.xinput import DevicePair, XInputMPX
 
@@ -65,12 +64,10 @@ def emit_to_guest(event: str, data: dict, sid: str):
 
 
 video = WebRTCManager(update_screen_size, emit_to_guest)
-try:
-    cursor_overlay = CursorNameOverlay()
-    app.logger.info("Desktop cursor-name overlay enabled")
-except Exception as exc:
-    cursor_overlay = None
-    app.logger.warning("Desktop cursor-name overlay unavailable: %s", exc)
+
+# Disabled: the transparent GTK overlay can interfere with host mouse input
+# on some X11 window managers. Keep all guest cursor overlay hooks dormant.
+cursor_overlay = None
 
 
 def host_ip() -> str:
