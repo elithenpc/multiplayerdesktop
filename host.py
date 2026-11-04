@@ -49,6 +49,8 @@ clients: dict[str, dict] = {}
 approved: dict[str, DevicePair] = {}
 last_input: dict[tuple[str, str], float] = {}
 state_lock = threading.RLock()
+chat_history: list[dict] = []
+CHAT_HISTORY_LIMIT = 100
 screen_size = {"width": 0, "height": 0}
 
 
@@ -221,6 +223,49 @@ def join_request(data):
     socketio.emit("join_pending", {"name": name}, to=request.sid)
     socketio.emit("client_pending", {"id": request.sid, "name": name})
     socketio.emit("client_list_changed")
+
+
+
+@socketio.on("chat_join")
+def chat_join():
+    sid = request.sid
+    if pair_for(sid) is None:
+        return
+    with state_lock:
+        messages = list(chat_history)
+    socketio.emit("chat_history", {"messages": messages}, to=sid)
+
+
+@socketio.on("host_chat_auth")
+def host_chat_auth(data):
+    supplied = str((data or {}).get("token", ""))
+    if not supplied or not secrets.compare_digest(supplied, ADMIN_TOKEN):
+        socketio.emit("host_chat_error", {"message": "Host chat authentication failed."}, to=request.sid)
+        return
+    join_room("host_chat")
+    with state_lock:
+        messages = list(chat_history)
+    socketio.emit("chat_history", {"messages": messages}, to=request.sid)
+
+
+@socketio.on("chat_message")
+def chat_message(data):
+    sid = request.sid
+    message = str((data or {}).get("message", "")).strip()[:500]
+    if not message:
+        return
+    with state_lock:
+        is_host = "host_chat" in socketio.server.rooms(sid, namespace="/")
+        if not is_host and sid not in approved:
+            return
+        name = "Host" if is_host else clients.get(sid, {}).get("name", "Guest")
+        entry = {"name": name, "message": message, "time": int(time.time())}
+        chat_history.append(entry)
+        del chat_history[:-CHAT_HISTORY_LIMIT]
+        recipients = list(approved.keys())
+    for recipient in recipients:
+        socketio.emit("chat_message", entry, to=recipient)
+    socketio.emit("chat_message", entry, to="host_chat")
 
 
 @socketio.on("webrtc_offer")
