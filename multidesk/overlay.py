@@ -15,6 +15,7 @@ class CursorNameOverlay:
         self._labels: dict[str, tuple[str, int, int]] = {}
         self._lock = threading.RLock()
         self._error = None
+        self._draw_pending = False
         self._thread.start()
         if not self._ready.wait(8):
             raise RuntimeError("Cursor overlay did not initialise")
@@ -59,8 +60,11 @@ class CursorNameOverlay:
         try:
             import cairo
             window = widget.get_window()
-            if window and hasattr(window, "input_shape_combine_region"):
-                window.input_shape_combine_region(cairo.Region(), 0, 0)
+            if window:
+                if hasattr(window, "set_pass_through"):
+                    window.set_pass_through(True)
+                if hasattr(window, "input_shape_combine_region"):
+                    window.input_shape_combine_region(cairo.Region(), 0, 0)
         except Exception:
             pass
 
@@ -90,7 +94,24 @@ class CursorNameOverlay:
             self._labels[guest_id] = (name, int(x), int(y))
         try:
             from gi.repository import GLib
-            GLib.idle_add(self._area.queue_draw)
+            self._queue_draw()
+        except Exception:
+            pass
+
+    def _queue_draw(self):
+        try:
+            from gi.repository import GLib
+            with self._lock:
+                if self._draw_pending:
+                    return
+                self._draw_pending = True
+            def redraw():
+                with self._lock:
+                    self._draw_pending = False
+                if self._area:
+                    self._area.queue_draw()
+                return False
+            GLib.idle_add(redraw)
         except Exception:
             pass
 
