@@ -16,7 +16,7 @@ if [[ -z "${DISPLAY:-}" ]]; then
 fi
 
 sudo apt update
-sudo apt install -y python3 python3-pip python3-numpy python3-pil xinput libx11-6 libxi6 libxtst6 pkg-config python3-dev build-essential
+sudo apt install -y python3 python3-pip python3-numpy python3-pil python3-gi gir1.2-gtk-3.0 python3-cairo xinput libx11-6 libxi6 libxtst6 pkg-config python3-dev build-essential
 
 python3 -m pip install --break-system-packages --upgrade -r requirements.txt
 
