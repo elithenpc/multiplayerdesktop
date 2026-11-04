@@ -4,12 +4,13 @@
 :root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0d1119;color:#edf2fa;font:15px system-ui,-apple-system,sans-serif}
 main{max-width:900px;margin:36px auto;padding:0 18px}h1{font-size:26px;margin:0 0 8px}.muted{color:#a9b7ca;line-height:1.5}
 .box{background:#171f2c;border:1px solid #2b3749;border-radius:13px;padding:19px;margin:16px 0}
-input,button{font:inherit;padding:10px 13px;border-radius:9px;border:1px solid #46556c}input{background:#0f1621;color:white;width:min(100%,440px)}button{background:#477bd4;color:white;cursor:pointer;font-weight:650;margin:3px}button.danger{background:#a74450}button.secondary{background:#34445d}
+.dashboard-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}.chat{background:#101722;border:1px solid #2b3749;border-radius:13px;display:flex;flex-direction:column;min-height:380px;max-height:620px;overflow:hidden}.chat-head{padding:13px 15px;border-bottom:1px solid #2b3749;font-weight:700}.chat-log{padding:12px;overflow:auto;flex:1;min-height:180px;display:flex;flex-direction:column;gap:9px}.chat-msg{font-size:13px;line-height:1.4;overflow-wrap:anywhere}.chat-msg strong{color:#9fc2ff}.chat-compose{display:flex;gap:7px;padding:10px;border-top:1px solid #2b3749}.chat-compose input{min-width:0;width:100%;flex:1}.chat-compose button{margin:0;padding:9px 11px}input,button{font:inherit;padding:10px 13px;border-radius:9px;border:1px solid #46556c}input{background:#0f1621;color:white;width:min(100%,440px)}button{background:#477bd4;color:white;cursor:pointer;font-weight:650;margin:3px}button.danger{background:#a74450}button.secondary{background:#34445d}
 .guest{display:flex;justify-content:space-between;align-items:center;gap:12px;border-top:1px solid #344154;padding:14px 0;flex-wrap:wrap}.guest:first-child{border-top:0}.guest-name{font-weight:700}.guest-meta{font-size:13px;color:#a9b7ca;margin-top:4px}.actions{display:flex;gap:5px;flex-wrap:wrap}
-#status{margin-top:10px}.pill{display:inline-block;border-radius:99px;background:#293b55;padding:4px 9px;font-size:12px;margin-left:7px}.pill.approved{background:#24533e}.empty{padding:16px 0;color:#a9b7ca}
+#status{margin-top:10px}.pill{display:inline-block;border-radius:99px;background:#293b55;padding:4px 9px;font-size:12px;margin-left:7px}.pill.approved{background:#24533e}.empty{padding:16px 0;color:#a9b7ca}@media(max-width:850px){.dashboard-layout{grid-template-columns:1fr}.chat{min-height:280px;max-height:380px}}
 </style></head><body><main>
 <h1>MultiDesk host dashboard</h1>
 <p class="muted">Review every connection request. Approval creates a dedicated XInput2 master pointer and keyboard for that guest. Revoking access removes those devices immediately.</p>
+<div class="dashboard-layout"><div>
 <section class="box">
 <h3>Host authentication</h3><p class="muted">The admin token is printed in the host terminal on startup. It is stored in this browser tab only.</p>
 <input id="token" type="password" autocomplete="off" placeholder="Paste host admin token"> <button id="unlock">Unlock dashboard</button>
@@ -20,9 +21,18 @@ input,button{font:inherit;padding:10px 13px;border-radius:9px;border:1px solid #
 <p class="muted">There is no fixed participant limit in the application. Actual capacity depends on your computer, desktop environment and network.</p>
 <div id="clients"><div class="empty">Unlock the dashboard to see connection requests.</div></div>
 </section>
+</div><aside class="chat"><div class="chat-head">Chat</div><div id="chatLog" class="chat-log"><div class="muted">Unlock the dashboard to use chat.</div></div><form id="chatForm" class="chat-compose"><input id="chatInput" maxlength="500" placeholder="Message…" autocomplete="off" disabled><button id="chatSend" disabled>Send</button></form></aside></div>
 <section class="box"><h3>Safety</h3><p class="muted">An approved guest can control your computer with their own pointer and keyboard. Only approve people you trust. Stop the host process with Ctrl+C to close the service and remove guest devices.</p></section>
 </main>
-<script>
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script><script>
+const socket=io({transports:["websocket","polling"]});
+let chatReady=false;
+const chatLog=document.querySelector("#chatLog"),chatInput=document.querySelector("#chatInput"),chatForm=document.querySelector("#chatForm");
+function addChatMessage(d){const item=document.createElement("div");item.className="chat-msg";const who=document.createElement("strong");who.textContent=(d.name||"Guest")+": ";const body=document.createElement("span");body.textContent=d.message||"";item.append(who,body);chatLog.append(item);chatLog.scrollTop=chatLog.scrollHeight}
+socket.on("chat_history",d=>{chatLog.replaceChildren();(d.messages||[]).forEach(addChatMessage);if(!d.messages?.length){const empty=document.createElement("div");empty.className="muted";empty.textContent="No messages yet.";chatLog.append(empty)}});
+socket.on("chat_message",addChatMessage);
+socket.on("connect",()=>{if(token)socket.emit("host_chat_auth",{token})});
+chatForm.addEventListener("submit",e=>{e.preventDefault();const value=chatInput.value.trim();if(!chatReady||!value)return;socket.emit("chat_message",{message:value});chatInput.value=""});
 let token=sessionStorage.getItem("multidesk-admin-token")||"",timer=null;
 const tokenInput=document.querySelector("#token"),statusEl=document.querySelector("#status"),list=document.querySelector("#clients"),refreshBtn=document.querySelector("#refresh");
 tokenInput.value=token;
@@ -50,7 +60,7 @@ async function refresh(){
   row.append(actions);list.append(row);
  }
 }
-document.querySelector("#unlock").onclick=async()=>{token=tokenInput.value.trim();if(!token){showStatus("Enter the admin token.");return}sessionStorage.setItem("multidesk-admin-token",token);await refresh();if(!timer)timer=setInterval(refresh,2500)};
+document.querySelector("#unlock").onclick=async()=>{token=tokenInput.value.trim();if(!token){showStatus("Enter the admin token.");return}sessionStorage.setItem("multidesk-admin-token",token);await refresh();if(!timer)timer=setInterval(refresh,2500);socket.emit("host_chat_auth",{token});chatReady=true;chatInput.disabled=false;document.querySelector("#chatSend").disabled=false};
 refreshBtn.onclick=refresh;
-if(token){refresh().then(()=>{if(!timer)timer=setInterval(refresh,2500)})}
+if(token){refresh().then(()=>{if(!timer)timer=setInterval(refresh,2500);socket.emit("host_chat_auth",{token});chatReady=true;chatInput.disabled=false;document.querySelector("#chatSend").disabled=false})}
 </script></body></html>
