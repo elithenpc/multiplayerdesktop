@@ -47,7 +47,7 @@ const statusEl=document.querySelector("#status"),message=document.querySelector(
 const nameInput=document.querySelector("#name"),joinBtn=document.querySelector("#joinBtn");
 const wrap=document.querySelector("#screenWrap"),screen=document.querySelector("#screen");
 const placeholder=document.querySelector("#screenPlaceholder"),cursors=document.querySelector("#cursors");
-let connected=false,requested=false,approved=false,lastMove=0,pendingMove=null,moveScheduled=false,peer=null,startingVideo=false;
+let connected=false,requested=false,approved=false,lastMove=0,pendingMove=null,moveScheduled=false,peer=null,startingVideo=false,joinQueued=false;
 function status(text){statusEl.textContent=text}
 function closeVideo(){startingVideo=false;if(peer){peer.ontrack=null;peer.close();peer=null}screen.srcObject=null}
 async function waitForIceGathering(pc){if(pc.iceGatheringState==="complete")return;await new Promise(resolve=>{const done=()=>{if(pc.iceGatheringState==="complete"){pc.removeEventListener("icegatheringstatechange",done);resolve()}};pc.addEventListener("icegatheringstatechange",done);setTimeout(resolve,10000)})}
@@ -70,10 +70,33 @@ function sendMove(e,immediate=false){
  if(immediate){socket.emit("pointer",pendingMove);pendingMove=null;return}
  if(!moveScheduled){moveScheduled=true;requestAnimationFrame(()=>{moveScheduled=false;if(approved&&pendingMove){socket.emit("pointer",pendingMove);pendingMove=null}})}
 }
-socket.on("connect",()=>{connected=true;status("Connected · access not yet approved");message.textContent="Connected. Request access when you are ready.";joinBtn.disabled=false});
-socket.on("disconnect",()=>{connected=false;approved=false;closeVideo();status("Disconnected");message.textContent="Connection lost. Reconnecting…";wrap.classList.add("waiting");placeholder.hidden=false;joinBtn.disabled=true});
-socket.on("connect_error",()=>status("Connection error"));
-socket.on("join_pending",d=>{requested=true;message.textContent="Request sent as "+d.name+". Waiting for the host to approve you…";joinBtn.disabled=true;status("Waiting for approval")});
+function submitJoin(){
+ if(!socket.connected){joinQueued=true;status("Connecting to host…");message.textContent="Connecting before sending your request…";return}
+ if(requested)return;
+ const name=(nameInput.value||"Guest").trim().slice(0,32)||"Guest";
+ requested=true;joinQueued=false;joinBtn.disabled=true;
+ message.textContent="Sending access request…";status("Sending request");
+ socket.emit("join_request",{name},()=>{
+   // Server-side join_pending is the confirmation; this callback is a fallback only.
+ });
+}
+socket.on("connect",()=>{
+ connected=true;status("Connected · access not yet approved");
+ message.textContent="Connected. Request access when you are ready.";
+ joinBtn.disabled=false;
+ if(joinQueued)submitJoin();
+});
+socket.on("disconnect",()=>{
+ connected=false;approved=false;requested=false;closeVideo();status("Disconnected");
+ message.textContent="Connection lost. Reconnecting…";wrap.classList.add("waiting");
+ placeholder.hidden=false;joinBtn.disabled=false;
+});
+socket.on("connect_error",error=>{
+ connected=false;status("Could not connect to host");
+ message.textContent="Connection failed: "+(error&&error.message?error.message:"check the host address and that MultiDesk is running.");
+ joinBtn.disabled=false;
+});
+socket.on("join_pending",d=>{requested=true;joinQueued=false;message.textContent="Request sent as "+d.name+". Waiting for the host to approve you…";joinBtn.disabled=true;status("Waiting for approval")});
 socket.on("access_granted",d=>{approved=true;requested=true;status("Approved · independent pointer active");message.textContent="The host approved you. Live video is starting.";wrap.classList.remove("waiting");placeholder.hidden=false;joinBtn.disabled=true;startVideo()});
 socket.on("access_denied",d=>{approved=false;requested=false;closeVideo();status("Access denied");message.textContent=d.reason||"The host denied access.";wrap.classList.add("waiting");placeholder.hidden=false;joinBtn.disabled=false});
 socket.on("screen_info",d=>{screen.dataset.width=d.width;screen.dataset.height=d.height});
@@ -84,7 +107,7 @@ socket.on("guest_cursor",d=>{
  el.textContent=d.name;el.style.left=(d.x*100)+"%";el.style.top=(d.y*100)+"%";
 });
 socket.on("cursor_remove",d=>{const el=document.getElementById("cursor-"+d.id);if(el)el.remove()});
-joinBtn.onclick=()=>{if(!connected)return;const name=(nameInput.value||"Guest").trim().slice(0,32)||"Guest";socket.emit("join_request",{name});joinBtn.disabled=true};
+joinBtn.addEventListener("click",()=>{if(requested)return;joinQueued=true;if(socket.connected){submitJoin()}else{status("Connecting to host…");message.textContent="Trying to connect to the host before sending your request…";joinBtn.disabled=true;socket.connect();setTimeout(()=>{if(joinQueued&&!socket.connected){joinBtn.disabled=false;message.textContent="Still unable to connect. Check that the host is running and that this is the correct guest URL.";status("Host connection timed out")}},10000)}});
 screen.addEventListener("pointermove",e=>{if(approved)sendMove(e)});
 screen.addEventListener("pointerdown",e=>{
  if(!approved)return;e.preventDefault();screen.focus?.();sendMove(e,true);
