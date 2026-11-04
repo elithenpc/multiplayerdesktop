@@ -40,7 +40,7 @@ input,button{font:inherit;border-radius:9px;padding:11px 14px;border:1px solid #
 <p class="notice muted">Keep this tab open while using the desktop. Keyboard input is sent to the host while this page has focus. Click the screen first.</p>
 </section>
 </main>
-<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
 <script>
 const socket=io({transports:["websocket","polling"]});
 const statusEl=document.querySelector("#status"),message=document.querySelector("#message");
