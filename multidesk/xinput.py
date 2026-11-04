@@ -117,8 +117,8 @@ class XInputMPX:
                 # XDevice. Build lightweight handles for the XTEST slave IDs
                 # instead of opening devices, which avoids leaving open-device
                 # references behind when Xorg destroys a guest's master pair.
-                pointer = ctypes.pointer(XDeviceStruct(pointer_id, 0, None))
-                keyboard = ctypes.pointer(XDeviceStruct(keyboard_id, 0, None))
+                pointer = ctypes.pointer(XDeviceStruct(pointer_test_id, 0, None))
+                keyboard = ctypes.pointer(XDeviceStruct(keyboard_test_id, 0, None))
                 # PointerRoot makes this guest keyboard follow its own paired
                 # master pointer, rather than the host's single keyboard focus.
                 focus_status = self.xi.XISetFocus(self.display, keyboard_id, 1, 0)
