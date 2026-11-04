@@ -13,6 +13,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, join_room
 from multidesk.video import WebRTCManager
+from multidesk.overlay import CursorNameOverlay
 
 from multidesk.xinput import DevicePair, XInputMPX
 
@@ -64,6 +65,12 @@ def emit_to_guest(event: str, data: dict, sid: str):
 
 
 video = WebRTCManager(update_screen_size, emit_to_guest)
+try:
+    cursor_overlay = CursorNameOverlay()
+    app.logger.info("Desktop cursor-name overlay enabled")
+except Exception as exc:
+    cursor_overlay = None
+    app.logger.warning("Desktop cursor-name overlay unavailable: %s", exc)
 
 
 def host_ip() -> str:
@@ -195,6 +202,8 @@ def client_action(sid: str, action: str):
         with state_lock:
             approved.pop(sid, None)
         video.close(sid)
+        if cursor_overlay:
+            cursor_overlay.remove_guest(sid)
         xinput.remove_pair(existing)
     socketio.emit("access_denied", {"reason": "The host revoked or denied access"}, to=sid)
     socketio.emit("approval_changed", {"id": sid, "approved": False})
@@ -294,6 +303,8 @@ def on_disconnect():
         for key in [key for key in last_input if key[0] == sid]:
             last_input.pop(key, None)
     video.close(sid)
+    if cursor_overlay:
+        cursor_overlay.remove_guest(sid)
     if pair:
         try:
             xinput.remove_pair(pair)
@@ -322,6 +333,8 @@ def pointer(data):
             name = clients.get(request.sid, {}).get("name", "Guest")
             recipients = list(approved.keys())
         cursor = {"id": request.sid, "name": name, "x": x, "y": y}
+        if cursor_overlay:
+            cursor_overlay.update_guest(request.sid, name, px, py)
         for sid in recipients:
             socketio.emit("guest_cursor", cursor, to=sid)
     except (ValueError, TypeError):
