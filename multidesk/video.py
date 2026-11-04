@@ -14,7 +14,7 @@ from mss import mss
 from PIL import Image
 
 # A lower, fixed stream profile is much easier on laptop CPUs and tailnet links.
-VIDEO_FPS = 15
+VIDEO_FPS = 10
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 VIDEO_CLOCK_RATE = 90_000
@@ -26,7 +26,7 @@ RESOLUTION_PROFILES = {
 
 
 class DesktopVideoTrack(VideoStreamTrack):
-    """15 fps, 720p maximum desktop track encoded by aiortc (VP8 by default)."""
+    """10 fps default desktop track with a selectable resolution cap."""
 
     def __init__(self, on_size: Callable[[int, int], None], resolution: str = "720p"):
         super().__init__()
