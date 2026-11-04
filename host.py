@@ -276,9 +276,10 @@ def webrtc_offer(data):
         return
     try:
         description = {"sdp": str((data or {}).get("sdp", "")), "type": str((data or {}).get("type", ""))}
+        resolution = str((data or {}).get("resolution", "720p"))
         if not description["sdp"] or description["type"] != "offer":
             raise ValueError("Invalid WebRTC offer")
-        video.offer(sid, description)
+        video.offer(sid, description, resolution)
     except Exception as exc:
         app.logger.exception("WebRTC setup failed for %s", sid)
         socketio.emit("webrtc_error", {"message": f"Could not start video: {exc}"}, to=sid)
