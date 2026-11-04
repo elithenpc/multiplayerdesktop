@@ -10,7 +10,7 @@ header{padding:16px 22px;background:#171e2b;border-bottom:1px solid #2c3749;disp
 main{max-width:1200px;margin:28px auto;padding:0 18px}.panel{background:#171f2c;border:1px solid #2b3749;border-radius:14px;padding:20px;margin-bottom:18px}
 h1,h2{margin:0 0 10px}h2{font-size:20px}.muted{color:#a9b7ca;line-height:1.5}
 input,button{font:inherit;border-radius:9px;padding:11px 14px;border:1px solid #46556c}input{background:#0f1621;color:white;min-width:220px}button{background:#477bd4;color:white;cursor:pointer;font-weight:650}button:disabled{opacity:.5;cursor:default}
-.workspace{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:14px;align-items:stretch}.chat{background:#101722;border:1px solid #2b3749;border-radius:10px;display:flex;flex-direction:column;min-height:360px;max-height:620px;overflow:hidden}.chat-head{padding:12px 14px;border-bottom:1px solid #2b3749;font-weight:700}.chat-log{padding:12px;overflow:auto;flex:1;min-height:180px;display:flex;flex-direction:column;gap:9px}.chat-msg{font-size:13px;line-height:1.4;overflow-wrap:anywhere}.chat-msg strong{color:#9fc2ff}.chat-compose{display:flex;gap:7px;padding:10px;border-top:1px solid #2b3749}.chat-compose input{min-width:0;width:100%;flex:1}.chat-compose button{padding:9px 11px}.screen-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.cursor{transform:none;left:0;top:0;margin:10px 0 0 10px;padding:3px 7px 3px 10px;background:#477bd4;border-color:#d5e5ff}.cursor:before{content:"";position:absolute;left:-10px;top:-10px;width:0;height:0;border-right:12px solid transparent;border-top:17px solid white;filter:drop-shadow(0 1px 1px #000)}.cursor:after{content:"";position:absolute;left:-8px;top:-8px;width:0;height:0;border-right:8px solid transparent;border-top:12px solid #477bd4}#screenWrap{position:relative;background:#05070b;line-height:0;overflow:hidden;border-radius:9px;min-height:180px;touch-action:none;user-select:none}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:14px;align-items:stretch}.chat{background:#101722;border:1px solid #2b3749;border-radius:10px;display:flex;flex-direction:column;min-height:360px;max-height:620px;overflow:hidden}.chat-head{padding:12px 14px;border-bottom:1px solid #2b3749;font-weight:700}.chat-log{padding:12px;overflow:auto;flex:1;min-height:180px;display:flex;flex-direction:column;gap:9px}.chat-msg{font-size:13px;line-height:1.4;overflow-wrap:anywhere}.chat-msg strong{color:#9fc2ff}.chat-compose{display:flex;gap:7px;padding:10px;border-top:1px solid #2b3749}.chat-compose input{min-width:0;width:100%;flex:1}.chat-compose button{padding:9px 11px}.screen-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.screen-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}select{font:inherit;border-radius:9px;padding:10px 12px;border:1px solid #46556c;background:#0f1621;color:white}.cursor{transform:none;left:0;top:0;margin:10px 0 0 10px;padding:3px 7px 3px 10px;background:#477bd4;border-color:#d5e5ff}.cursor:before{content:"";position:absolute;left:-10px;top:-10px;width:0;height:0;border-right:12px solid transparent;border-top:17px solid white;filter:drop-shadow(0 1px 1px #000)}.cursor:after{content:"";position:absolute;left:-8px;top:-8px;width:0;height:0;border-right:8px solid transparent;border-top:12px solid #477bd4}#screenWrap{position:relative;background:#05070b;line-height:0;overflow:hidden;border-radius:9px;min-height:180px;touch-action:none;user-select:none}
 #screen{display:block;width:100%;height:auto;min-height:180px;object-fit:contain;line-height:normal}
 #screenWrap.waiting #screen{opacity:.16}
 #screenPlaceholder{position:absolute;inset:0;display:grid;place-items:center;color:#a9b7ca;line-height:1.5;text-align:center;padding:20px;pointer-events:none}
@@ -30,7 +30,7 @@ input,button{font:inherit;border-radius:9px;padding:11px 14px;border:1px solid #
 <p id="message" class="muted" role="status">Connect to the host to begin.</p>
 </section>
 <section class="panel">
-<div class="screen-heading"><h2>Shared desktop</h2><button id="fullscreenBtn" type="button">Fullscreen</button></div>
+<div class="screen-heading"><h2>Shared desktop</h2><div class="screen-controls"><label for="resolutionSelect" class="muted">Resolution</label><select id="resolutionSelect"><option value="480p">480p · Faster</option><option value="720p" selected>720p · Balanced</option><option value="1080p">1080p · Sharper</option></select><button id="fullscreenBtn" type="button">Fullscreen</button></div></div>
 <p class="muted">Live WebRTC video. Your pointer and keyboard are separate X11 devices, not just browser cursor drawings.</p>
 <div class="workspace"><div><div id="screenWrap" class="waiting">
 <video id="screen" autoplay playsinline muted></video>
@@ -47,7 +47,7 @@ const statusEl=document.querySelector("#status"),message=document.querySelector(
 const nameInput=document.querySelector("#name"),joinBtn=document.querySelector("#joinBtn");
 const wrap=document.querySelector("#screenWrap"),screen=document.querySelector("#screen");
 const placeholder=document.querySelector("#screenPlaceholder"),cursors=document.querySelector("#cursors");
-const chatLog=document.querySelector("#chatLog"),chatInput=document.querySelector("#chatInput"),chatForm=document.querySelector("#chatForm"),fullscreenBtn=document.querySelector("#fullscreenBtn");
+const chatLog=document.querySelector("#chatLog"),chatInput=document.querySelector("#chatInput"),chatForm=document.querySelector("#chatForm"),fullscreenBtn=document.querySelector("#fullscreenBtn"),resolutionSelect=document.querySelector("#resolutionSelect");
 let connected=false,requested=false,approved=false,lastMove=0,pendingMove=null,moveScheduled=false,peer=null,startingVideo=false,joinQueued=false;
 function status(text){statusEl.textContent=text}
 function closeVideo(){startingVideo=false;if(peer){peer.ontrack=null;peer.close();peer=null}screen.srcObject=null}
@@ -57,7 +57,7 @@ async function startVideo(){
  try{const config=await fetch("/api/webrtc-config").then(r=>r.json());const pc=new RTCPeerConnection(config);peer=pc;pc.addTransceiver("video",{direction:"recvonly"});
  pc.ontrack=event=>{screen.srcObject=event.streams[0];screen.play().catch(()=>{});placeholder.hidden=true;wrap.classList.remove("waiting");status("Live video · WebRTC")};
  pc.onconnectionstatechange=()=>{if(pc.connectionState==="failed")status("Video connection failed · check network/TURN settings");else if(pc.connectionState==="disconnected")status("Video reconnecting…")};
- const offer=await pc.createOffer();await pc.setLocalDescription(offer);await waitForIceGathering(pc);if(peer===pc&&approved)socket.emit("webrtc_offer",{type:pc.localDescription.type,sdp:pc.localDescription.sdp});else pc.close();
+ const offer=await pc.createOffer();await pc.setLocalDescription(offer);await waitForIceGathering(pc);if(peer===pc&&approved)socket.emit("webrtc_offer",{type:pc.localDescription.type,sdp:pc.localDescription.sdp,resolution:resolutionSelect.value});else pc.close();
  }catch(error){startingVideo=false;status("Video error: "+error.message);message.textContent="Video could not start. Check the host installation and network.";closeVideo()}
 }
 socket.on("webrtc_answer",async description=>{if(!peer||!approved)return;try{await peer.setRemoteDescription(description);startingVideo=false}catch(error){status("Could not apply video answer: "+error.message);closeVideo()}});
@@ -113,6 +113,7 @@ function addChatMessage(d){const item=document.createElement("div");item.classNa
 socket.on("chat_history",d=>{chatLog.replaceChildren();(d.messages||[]).forEach(addChatMessage);if(!d.messages?.length){const empty=document.createElement("div");empty.className="muted";empty.textContent="No messages yet.";chatLog.append(empty)}});
 socket.on("chat_message",addChatMessage);
 chatForm.addEventListener("submit",e=>{e.preventDefault();const value=chatInput.value.trim();if(!approved||!value)return;socket.emit("chat_message",{message:value});chatInput.value=""});
+resolutionSelect.addEventListener("change",()=>{if(!approved)return;closeVideo();wrap.classList.add("waiting");placeholder.hidden=false;placeholder.textContent="Changing stream resolution…";startVideo()});
 fullscreenBtn.addEventListener("click",async()=>{try{if(!document.fullscreenElement){await wrap.requestFullscreen()}else{await document.exitFullscreen()}}catch(e){message.textContent="Fullscreen is unavailable in this browser."}});
 document.addEventListener("fullscreenchange",()=>{fullscreenBtn.textContent=document.fullscreenElement?"Exit fullscreen":"Fullscreen"});
 
