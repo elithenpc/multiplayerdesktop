@@ -18,13 +18,20 @@ VIDEO_FPS = 15
 VIDEO_WIDTH = 1280
 VIDEO_HEIGHT = 720
 VIDEO_CLOCK_RATE = 90_000
+RESOLUTION_PROFILES = {
+    "480p": (854, 480),
+    "720p": (1280, 720),
+    "1080p": (1920, 1080),
+}
 
 
 class DesktopVideoTrack(VideoStreamTrack):
     """15 fps, 720p maximum desktop track encoded by aiortc (VP8 by default)."""
 
-    def __init__(self, on_size: Callable[[int, int], None]):
+    def __init__(self, on_size: Callable[[int, int], None], resolution: str = "720p"):
         super().__init__()
+        self.max_width, self.max_height = RESOLUTION_PROFILES.get(resolution, RESOLUTION_PROFILES["720p"])
+        self.resolution = resolution
         self.capture = mss()
         self.monitor = self.capture.monitors[0]
         self._frame_index = 0
@@ -44,7 +51,7 @@ class DesktopVideoTrack(VideoStreamTrack):
 
         shot = self.capture.grab(self.monitor)
         image = Image.frombytes("RGB", shot.size, shot.rgb)
-        image.thumbnail((VIDEO_WIDTH, VIDEO_HEIGHT), Image.Resampling.BILINEAR)
+        image.thumbnail((self.max_width, self.max_height), Image.Resampling.BILINEAR)
         frame = VideoFrame.from_ndarray(np.asarray(image), format="rgb24")
 
         self._frame_index += 1
@@ -78,14 +85,16 @@ class WebRTCManager:
         self.ready.set()
         self.loop.run_forever()
 
-    def offer(self, sid: str, description: dict):
-        future = asyncio.run_coroutine_threadsafe(self._offer(sid, description), self.loop)
+    def offer(self, sid: str, description: dict, resolution: str = "720p"):
+        if resolution not in RESOLUTION_PROFILES:
+            resolution = "720p"
+        future = asyncio.run_coroutine_threadsafe(self._offer(sid, description, resolution), self.loop)
         return future.result(timeout=45)
 
-    async def _offer(self, sid: str, description: dict):
+    async def _offer(self, sid: str, description: dict, resolution: str):
         await self._close(sid)
         pc = RTCPeerConnection()
-        track = DesktopVideoTrack(self.on_size)
+        track = DesktopVideoTrack(self.on_size, resolution)
         self.peers[sid] = (pc, track)
         pc.addTrack(track)
 
