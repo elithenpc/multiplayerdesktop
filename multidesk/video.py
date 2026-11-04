@@ -1,30 +1,55 @@
 """WebRTC desktop video capture and peer management."""
 from __future__ import annotations
+
 import asyncio
 import threading
+import time
+from fractions import Fraction
 from typing import Callable
+
 import numpy as np
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from av import VideoFrame
 from mss import mss
 from PIL import Image
 
+# A lower, fixed stream profile is much easier on laptop CPUs and tailnet links.
+VIDEO_FPS = 15
+VIDEO_WIDTH = 1280
+VIDEO_HEIGHT = 720
+VIDEO_CLOCK_RATE = 90_000
+
+
 class DesktopVideoTrack(VideoStreamTrack):
-    """Live 30 fps desktop video track, encoded by aiortc (VP8 by default)."""
+    """15 fps, 720p maximum desktop track encoded by aiortc (VP8 by default)."""
+
     def __init__(self, on_size: Callable[[int, int], None]):
         super().__init__()
         self.capture = mss()
         self.monitor = self.capture.monitors[0]
+        self._frame_index = 0
+        self._last_frame_time = 0.0
         on_size(self.monitor["width"], self.monitor["height"])
 
     async def recv(self):
-        pts, time_base = await self.next_timestamp()
+        if self.readyState != "live":
+            from aiortc.mediastreams import MediaStreamError
+            raise MediaStreamError
+
+        now = time.monotonic()
+        delay = (1 / VIDEO_FPS) - (now - self._last_frame_time)
+        if self._last_frame_time and delay > 0:
+            await asyncio.sleep(delay)
+        self._last_frame_time = time.monotonic()
+
         shot = self.capture.grab(self.monitor)
         image = Image.frombytes("RGB", shot.size, shot.rgb)
-        image.thumbnail((1920, 1080), Image.Resampling.BILINEAR)
+        image.thumbnail((VIDEO_WIDTH, VIDEO_HEIGHT), Image.Resampling.BILINEAR)
         frame = VideoFrame.from_ndarray(np.asarray(image), format="rgb24")
-        frame.pts = pts
-        frame.time_base = time_base
+
+        self._frame_index += 1
+        frame.pts = round(self._frame_index * VIDEO_CLOCK_RATE / VIDEO_FPS)
+        frame.time_base = Fraction(1, VIDEO_CLOCK_RATE)
         return frame
 
     def stop(self):
@@ -33,8 +58,10 @@ class DesktopVideoTrack(VideoStreamTrack):
             self.capture = None
         super().stop()
 
+
 class WebRTCManager:
     """Owns aiortc peers on a dedicated asyncio event loop."""
+
     def __init__(self, on_size: Callable[[int, int], None], emit: Callable):
         self.on_size = on_size
         self.emit = emit
