@@ -53,6 +53,8 @@ class XInputMPX:
         self.x11.XCloseDisplay.restype = ctypes.c_int
         self.x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
         self.x11.XSync.restype = ctypes.c_int
+        self.x11.XFlush.argtypes = [ctypes.c_void_p]
+        self.x11.XFlush.restype = ctypes.c_int
         self.x11.XStringToKeysym.argtypes = [ctypes.c_char_p]
         self.x11.XStringToKeysym.restype = ctypes.c_ulong
         self.x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
@@ -115,8 +117,8 @@ class XInputMPX:
                 # XDevice. Build lightweight handles for the XTEST slave IDs
                 # instead of opening devices, which avoids leaving open-device
                 # references behind when Xorg destroys a guest's master pair.
-                pointer = ctypes.pointer(XDeviceStruct(pointer_test_id, 0, None))
-                keyboard = ctypes.pointer(XDeviceStruct(keyboard_test_id, 0, None))
+                pointer = ctypes.pointer(XDeviceStruct(pointer_id, 0, None))
+                keyboard = ctypes.pointer(XDeviceStruct(keyboard_id, 0, None))
                 # PointerRoot makes this guest keyboard follow its own paired
                 # master pointer, rather than the host's single keyboard focus.
                 focus_status = self.xi.XISetFocus(self.display, keyboard_id, 1, 0)
@@ -148,7 +150,7 @@ class XInputMPX:
             ok = self.xtst.XTestFakeDeviceMotionEvent(
                 self.display, pair.pointer, 0, 0, axes, 2, 0
             )
-            self.x11.XSync(self.display, 0)
+            self.x11.XFlush(self.display)
             if not ok:
                 raise RuntimeError("XTest could not inject motion for this MPX pointer.")
 
@@ -157,7 +159,7 @@ class XInputMPX:
             ok = self.xtst.XTestFakeDeviceButtonEvent(
                 self.display, pair.pointer, int(button), int(bool(down)), ctypes.POINTER(ctypes.c_int)(), 0, 0
             )
-            self.x11.XSync(self.display, 0)
+            self.x11.XFlush(self.display)
             if not ok:
                 raise RuntimeError("XTest could not inject a button event for this MPX pointer.")
 
