@@ -191,6 +191,10 @@ def client_action(sid: str, action: str):
         if disconnected:
             xinput.remove_pair(pair)
             return jsonify(error="Guest disconnected during approval"), 409
+        try:
+            xinput.set_cursor_name(pair, guest_name)
+        except Exception as exc:
+            app.logger.warning("Could not set named cursor for %s: %s", sid, exc)
         socketio.emit("access_granted", {"name": guest_name}, to=sid)
         socketio.emit("approval_changed", {"id": sid, "approved": True})
         return jsonify(ok=True, message="Approved with an independent X11 pointer and keyboard")
