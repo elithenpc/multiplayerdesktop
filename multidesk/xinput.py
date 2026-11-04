@@ -17,6 +17,19 @@ class XDeviceStruct(ctypes.Structure):
     ]
 
 
+class XcursorImage(ctypes.Structure):
+    _fields_ = [
+        ("version", ctypes.c_uint),
+        ("size", ctypes.c_uint),
+        ("width", ctypes.c_uint),
+        ("height", ctypes.c_uint),
+        ("xhot", ctypes.c_uint),
+        ("yhot", ctypes.c_uint),
+        ("pixels", ctypes.POINTER(ctypes.c_uint)),
+        ("comment", ctypes.c_char_p),
+    ]
+
+
 @dataclass
 class DevicePair:
     name: str
@@ -24,6 +37,7 @@ class DevicePair:
     keyboard_id: int
     pointer: ctypes.POINTER(XDeviceStruct)
     keyboard: ctypes.POINTER(XDeviceStruct)
+    cursor_id: int = 0
 
 
 class XInputMPX:
@@ -35,11 +49,13 @@ class XInputMPX:
         x11_name = ctypes.util.find_library("X11")
         xi_name = ctypes.util.find_library("Xi")
         xtst_name = ctypes.util.find_library("Xtst")
-        if not all((x11_name, xi_name, xtst_name)):
-            raise RuntimeError("Missing X11 input libraries. Install libx11-6, libxi6 and libxtst6.")
+        xcursor_name = ctypes.util.find_library("Xcursor")
+        if not all((x11_name, xi_name, xtst_name, xcursor_name)):
+            raise RuntimeError("Missing X11 cursor libraries. Install libx11-6, libxi6, libxtst6 and libxcursor1.")
         self.x11 = ctypes.CDLL(x11_name)
         self.xi = ctypes.CDLL(xi_name)
         self.xtst = ctypes.CDLL(xtst_name)
+        self.xcursor = ctypes.CDLL(xcursor_name)
         self._configure()
         self.display = self.x11.XOpenDisplay(None)
         if not self.display:
@@ -51,6 +67,17 @@ class XInputMPX:
         self.x11.XOpenDisplay.restype = ctypes.c_void_p
         self.x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
         self.x11.XCloseDisplay.restype = ctypes.c_int
+        self.x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+        self.x11.XDefaultRootWindow.restype = ctypes.c_ulong
+        self.x11.XFreeCursor.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        self.x11.XFreeCursor.restype = ctypes.c_int
+        self.xi.XIChangeCursor.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong]
+        self.xi.XIChangeCursor.restype = ctypes.c_int
+        self.xcursor.XcursorImageCreate.argtypes = [ctypes.c_uint, ctypes.c_uint]
+        self.xcursor.XcursorImageCreate.restype = ctypes.POINTER(XcursorImage)
+        self.xcursor.XcursorImageDestroy.argtypes = [ctypes.POINTER(XcursorImage)]
+        self.xcursor.XcursorImageLoadCursor.argtypes = [ctypes.c_void_p, ctypes.POINTER(XcursorImage)]
+        self.xcursor.XcursorImageLoadCursor.restype = ctypes.c_ulong
         self.x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
         self.x11.XSync.restype = ctypes.c_int
         self.x11.XFlush.argtypes = [ctypes.c_void_p]
@@ -133,8 +160,60 @@ class XInputMPX:
                     pass
                 raise
 
+    def set_cursor_name(self, pair: DevicePair, name: str) -> None:
+        """Attach a name tag to the MPX pointer's cursor, without an overlay window."""
+        from PIL import Image, ImageDraw, ImageFont
+
+        label = (str(name).strip() or "Guest")[:24]
+        font = ImageFont.load_default()
+        probe = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+        bounds = ImageDraw.Draw(probe).textbbox((0, 0), label, font=font)
+        width = min(220, max(100, bounds[2] - bounds[0] + 34))
+        height = 34
+        image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        draw.polygon([(1, 1), (1, 18), (6, 13), (10, 21), (14, 19), (10, 11), (17, 11)],
+                     fill=(255, 255, 255, 255), outline=(15, 23, 42, 255))
+        draw.rounded_rectangle((20, 3, width - 2, 27), radius=5, fill=(15, 23, 42, 235))
+        draw.text((26, 8), label, font=font, fill=(255, 255, 255, 255))
+
+        pixels = (ctypes.c_uint * (width * height))()
+        for index, (red, green, blue, alpha) in enumerate(image.getdata()):
+            pixels[index] = (alpha << 24) | (red << 16) | (green << 8) | blue
+
+        with self.lock:
+            cursor_image = self.xcursor.XcursorImageCreate(width, height)
+            if not cursor_image:
+                raise RuntimeError("Xcursor could not allocate a named cursor.")
+            try:
+                cursor_image.contents.size = ctypes.sizeof(XcursorImage)
+                cursor_image.contents.xhot = 1
+                cursor_image.contents.yhot = 1
+                ctypes.memmove(cursor_image.contents.pixels, pixels, ctypes.sizeof(pixels))
+                cursor_id = self.xcursor.XcursorImageLoadCursor(self.display, cursor_image)
+            finally:
+                self.xcursor.XcursorImageDestroy(cursor_image)
+            if not cursor_id:
+                raise RuntimeError("Xcursor could not create the named cursor.")
+            root = self.x11.XDefaultRootWindow(self.display)
+            status = self.xi.XIChangeCursor(self.display, pair.pointer_id, root, cursor_id)
+            self.x11.XFlush(self.display)
+            if status != 0:
+                self.x11.XFreeCursor(self.display, cursor_id)
+                raise RuntimeError("XInput could not assign the named cursor to this guest pointer.")
+            old_cursor = pair.cursor_id
+            pair.cursor_id = cursor_id
+            if old_cursor:
+                self.x11.XFreeCursor(self.display, old_cursor)
+
     def remove_pair(self, pair: DevicePair) -> None:
         with self.lock:
+            if pair.cursor_id:
+                root = self.x11.XDefaultRootWindow(self.display)
+                self.xi.XIChangeCursor(self.display, pair.pointer_id, root, 0)
+                self.x11.XFreeCursor(self.display, pair.cursor_id)
+                pair.cursor_id = 0
+                self.x11.XFlush(self.display)
             # Xorg removes the XTEST slave devices together with their master pair.
             try:
                 self._run_xinput(
